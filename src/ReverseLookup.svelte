@@ -20,7 +20,7 @@
     }
     
     td {
-      padding: 0.4em 0.2em;
+      padding: 0.4em;
     }
     
     tr:nth-child(odd) {
@@ -29,7 +29,6 @@
     
     td.strokes {
       font-family: Courier, monospace;
-      padding: 0;
     }
     
     input {
