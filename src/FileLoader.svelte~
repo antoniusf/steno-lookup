@@ -1,0 +1,54 @@
+<script>
+  import { createEventDispatcher } from 'svelte';
+
+  const dispatch = createEventDispatcher();
+
+  let files = [];
+  let status = "choosefile";
+  let readpromise;
+  export let dictionary;
+
+  $: readFile(files);
+
+  function readFile (files) {
+      if (files.length > 0) {
+	  let file = files[0];
+	  if (file.size > 10 * 2**20) {
+	      status = "toobig";
+	  } else if (file.type != "application/json") {
+	      status = "wrongtype";
+	  } else {
+	      status = "reading";
+	      readpromise = file.text().then(JSON.parse).then(finishReadFile);
+	  }
+      }
+  }
+
+  function finishReadFile (new_dictionary) {
+      dictionary = new_dictionary;
+      dispatch("message", {
+	  status: "done"
+      });
+  }
+    
+</script>
+
+<p>Please upload a dictonary.</p>
+<input type="file" bind:files>
+
+{#if status == "choosefile"}
+  <p>Please choose a dictionary from your device.</p>
+  {:else if status == "toobig"}
+<p>Sorry, we only accept files up to 10MB currently.</p>
+{:else if status == "wrongtype"}
+<p>Sorry, right now we can only read plover json dictionaries.</p>
+{:else if status == "reading"}
+{#await readpromise}
+<p>Reading file...</p>
+{:then}
+<p>Reading file... done!</p>
+{:catch error}
+<p>Oops, something went wrong. Please try again?</p>
+{/await}
+{/if}
+    

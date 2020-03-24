@@ -1,0 +1,7 @@
+<script>
+    export let dictionary;
+    let query = "";
+</script>
+
+<input type="text" bind:value=query/>
+    
