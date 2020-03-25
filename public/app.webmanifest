@@ -1,0 +1,16 @@
+{
+    "name": "steno lookup",
+    "short_name": "steno lookup",
+    "description": "Lets you look up words from your steno dictionary while on the go.",
+    "icons": [
+	{
+	    "src": "icon.png",
+	    "sizes": "512x512",
+	    "type": "image/png"
+	}
+    ],
+    "start_url": "/index.html",
+    "display": "fullscreen",
+    "theme_color": "#008000",
+    "background_color": "#008000"
+}

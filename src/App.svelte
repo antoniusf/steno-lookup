@@ -1,11 +1,20 @@
 <script>
-	import FileLoader from './FileLoader.svelte';
+    import FileLoader from './FileLoader.svelte';
     import ReverseLookup from './ReverseLookup.svelte';
-	export let name;
+    export let name;
 
-	let status = 'load-dict';
+    if ('serviceWorker' in navigator) {
+	navigator.serviceWorker.register('serviceworker.js')
+	    .then((registration) => {
+		console.log("Service worker registration successful.");
+	    }).catch((error) => {
+		console.log("Service worker registration failed: " + error);
+	    });
+    }
+
+    let status = 'load-dict';
     let loader_status = 'initializing';
-	let dictionary = null;
+    let dictionary = null;
 
     function toggleLoad (event) {
         if (status == 'load-dict') {
