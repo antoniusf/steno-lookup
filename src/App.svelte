@@ -1,7 +1,6 @@
 <script>
     import FileLoader from './FileLoader.svelte';
-    import ReverseLookup from './ReverseLookup.svelte';
-    export let name;
+    import Lookup from './Lookup.svelte';
 
     if ('serviceWorker' in navigator) {
 	navigator.serviceWorker.register('serviceworker.js')
@@ -41,7 +40,7 @@
         {#if dictionary === null}
         <p id="nodict">No dictionary loaded.</p>
         {:else}
-        <ReverseLookup bind:dictionary={dictionary.data}/>
+        <Lookup bind:dictionary={dictionary.data}/>
         {/if}
 	{/if}
 </main>
