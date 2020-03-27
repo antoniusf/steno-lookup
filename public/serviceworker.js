@@ -7,7 +7,10 @@ self.addEventListener('install', (event) => {
 		'./global.css',
 		'./favicon.png',
 		'./build/bundle.css',
-		'./build/bundle.js'
+		'./build/bundle.js',
+		'./load-icon.svg',
+		'./abc-icon.svg',
+		'./STK-icon.svg'
 	    ]);
 	})
     );
@@ -20,8 +23,8 @@ self.addEventListener('fetch', (event) => {
 		return response;
 	    } else {
 		response = new Response("Not Found: Your browser tried to request a resource that was not packaged with this app. This might be a bug in the app, but it really shouldn't happen.", {status: 404, statusText: "Not Found"});
-		//return response;
-		return fetch(event.request);
+		console.log("Warning: tried to fetch unpackaged resource");
+		return response;
 	    }
 	})
     );
