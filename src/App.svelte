@@ -2,13 +2,22 @@
     import FileLoader from './FileLoader.svelte';
     import Lookup from './Lookup.svelte';
 
+    let serviceworker_version = "(unknown)";
+
     if ('serviceWorker' in navigator) {
 	navigator.serviceWorker.register('serviceworker.js')
 	    .then((registration) => {
+		registration.onupdatefound = (e => alert("update!!"));
 		console.log("Service worker registration successful.");
+		console.log("installing: " + registration.installing);
+		console.log("waiting: " + registration.waiting);
+		console.log("active: " + registration.active);
 	    }).catch((error) => {
 		console.log("Service worker registration failed: " + error);
 	    });
+
+	navigator.serviceWorker.addEventListener("message", (event => serviceworker_version = event.data));
+	navigator.serviceWorker.controller.postMessage("getversion");
     }
 
     let status = 'load-dict';
@@ -47,6 +56,8 @@
         <Lookup bind:dictionary={dictionary.data}/>
         {/if}
 	{/if}
+
+    <p id="version-info">Service worker version: {serviceworker_version}</p>
 </main>
 
 <style>
@@ -59,10 +70,11 @@
         
         display: grid;
         grid-template-columns: minmax(0, 1fr) 2em 2em;
-        grid-template-rows: 2em auto auto;
+        grid-template-rows: 2em auto auto auto;
         grid-template-areas: "mode switch load"
-        "query query query"
-                             "main main main";
+                             "query query query"
+                             "main main main"
+			     "info info info";
         grid-column-gap: 0.3em;
         grid-row-gap: 0.5em;
     }
@@ -100,10 +112,15 @@
     
     button#load {
       grid-area: load;
-      padding: 0;
+      padding: 0; 
     }
 
     p#nodict {
       grid-area: query;
+    }
+
+    p#version-info {
+      grid-area: info;
+      font-size: 14px;
     }
 </style>
