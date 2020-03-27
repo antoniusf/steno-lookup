@@ -26,11 +26,15 @@
 </script>
 
 <main>
-    <button id="switch">
-    a
+    <button id="switch" on:click={e => { if (status == "find-stroke") { status = "query" } else { status = "find-stroke"} }}>
+      {#if (status == "find-stroke")}
+        <img src="abc-icon.svg" alt="lookup steno"/>
+      {:else}
+	<img src="STK-icon.svg" alt="lookup english"/>
+      {/if}
     </button>
     <button id="load" class={(status == 'load-dict') ? 'selected' : ''} on:click={toggleLoad}>
-    b
+      <img src="load-icon.svg" alt="load"/>
     </button>
 	{#if status == "load-dict"}
         <h1>Load</h1>
@@ -78,6 +82,12 @@
       border: none;
       color: white;
       cursor: pointer;
+      padding: 0;
+    }
+
+    button > img {
+      width: 100%;
+      height: 100%;
     }
 
     button.selected {
@@ -90,6 +100,7 @@
     
     button#load {
       grid-area: load;
+      padding: 0;
     }
 
     p#nodict {
