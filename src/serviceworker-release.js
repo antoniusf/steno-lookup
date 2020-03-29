@@ -1,10 +1,55 @@
 import { openDB, deleteDB, wrap, unwrap } from 'idb';
 
 self.addEventListener('install', (event) => {
-    event.waitUntil(setup());
+    event.waitUntil(setup().catch(error => console.log("Error in setup: " + error + " (" + error.fileName + ":" + error.lineNumber + ")")));
 });
 
 async function setup() {
+    const db = await openDB("data", 1, {
+	upgrade(db, oldVersion, newVersion, transaction) {
+	    db.createObjectStore("fileversions", { keyPath: "url" });
+	}
+    });
+
+    const store = db.transaction("fileversions").objectStore("fileversions");
+    const version = store.get("<app-version>");
+    if (version) {
+	await checkForUpdates();
+    } else {
+	await installNewestVersion();
+    }
+}
+
+async function checkForUpdates() {
+
+    const response = await fetch("./version", {cache: "no-cache"});
+    if (response.ok) {
+	console.log("reading version info...");
+	let reader = response.body.getReader();
+
+	// I'm a little bit sorry for using a binary format here,
+	// but given that we only get uint8's from our reader,
+	// it's just the easiest thing here.
+	//
+	// And the push-parser functions were just the most elegant way
+	// I could think of, for handling arbitrary chunk boundaries
+	// without having to allocate a big Uint8Array where we don't
+	// even know the initial size.
+	//
+	// Also, it's really fun to see that generators are so powerful.
+
+	let version_data = await driveParserFromReader(readVersionData(), reader);
+	console.log("version info parsed: " + JSON.stringify(version_data, null, 2));
+    } else {
+	console.log("retrieving version file failed.");
+    }
+}
+
+async function installNewestVersion() {
+
+    // check one last time to make sure we're getting the most up-to-date version
+    await checkForUpdates();
+
     let cache = await caches.open('v1');
     await cache.addAll([
 	'./', // add the base URL so it handles this correctly
@@ -19,14 +64,10 @@ async function setup() {
 	'./abc-icon.svg',
 	'./STK-icon.svg'
     ]);
-    return null;
 }
 
 self.addEventListener('fetch', (event) => {
     event.respondWith(
-	// Development
-	// fetch(event.request)
-	// normal use
 	caches.match(event.request).then((response) => {
 	    if (response) {
 		return response;
@@ -41,51 +82,98 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('message', async (event) => {
     if (event.data == "getversion") {
-	event.source.postMessage("friday4.6");
+	event.source.postMessage("friday-rollup1.3");
     }
     if (event.data == "checkforupdates") {
-	fetch("./version", {cache: "no-cache"}).then((response) => {
-	    if (response.ok) {
-		console.log("response okay");
-		let readResponse = async (response) => {
-		    console.log("in readResponse.");
-		    let reader = response.body.getReader();
-		    let buffer = new Uint8Array(32); // we're hard-limiting this to 32 bytes, that should be enough and it saves me the work of resizing
-		    let pos = 0;
-		    while (true) {
-			let { value: chunk, done: done } = await reader.read();
-
-			if (done) {
-			    break;
-			}
-
-			let remaining_space = buffer.length - pos;
-			if (chunk.length > remaining_space) {
-			    // the next chunk would overflow our buffer.
-			    // theoretically, we could just cut off the chunk here
-			    // however, this is kind of unclean,
-			    // and it may also create problems if the received string
-			    // is utf-8, since we may cut off in the middle of a
-			    // continuation byte.
-			    //
-			    // in short: we're just going to error when this happens.
-			    console.log("error: version response too long!");
-			    return undefined;
-			}
-			
-			buffer.set(chunk, pos);
-			pos += chunk.length;
-		    }
-
-		    // we should get plain ascii from the server, so we
-		    // don't have to worry about cutting of continuation bytes
-		    // by hard-limiting our buffer to 32 bytes
-		    let decoder = new TextDecoder();
-		    text = decoder.decode(buffer.subarray(0, pos));
-		    console.log(text);
-		};
-		readResponse(response).catch(error => console.log("Error in readResponse: " + error + " (" + error.fileName + ":" + error.lineNumber + ")"));
-	    }
-	});
+	checkForUpdates().catch(error => console.log("Error in checkForUpdates: " + error + " (" + error.fileName + ":" + error.lineNumber + ")"));
     }
 });
+
+
+// push-parser-style decoding functions
+// we use little-endian by default
+function* readUint16 () {
+    const byte1 = yield;
+    const byte2 = yield;
+    console.log("readUint16: " + byte1 + ", " + byte2)
+    return byte1 | (byte2 << 8);
+}
+
+function* readUint32 () {
+    const byte1 = yield;
+    const byte2 = yield;
+    const byte3 = yield;
+    const byte4 = yield;
+    return byte1 | (byte2 << 8) | (byte3 << 16) | (byte4 << 24);
+}
+
+function* readString() {
+    const string_length = yield* readUint16();
+    console.log("readString: length = " + string_length);
+    let buffer = new Uint8Array(string_length);
+    for (let i=0; i < buffer.length; i++) {
+	buffer[i] = yield;
+    }
+
+    console.log("readString: buffer = " + buffer);
+    let decoder = new TextDecoder();
+    return decoder.decode(buffer);
+}
+
+function* readFileRecord() {
+    let record = {};
+    record.filename = yield* readString();
+    record.hash = yield* readString();
+    record.filesize = yield* readUint32();
+    console.log("readFileRecord: " + JSON.stringify(record, null, 2));
+
+    return record;
+}
+
+function* readVersionData() {
+    let apphash = yield* readString();
+    let records = [];
+    while (true) {
+	try {
+	    records.push(yield* readFileRecord());
+	} catch (e) {
+	    if (e == 'endOfStream') {
+		return { records: records, apphash: apphash }; 
+	    } else {
+		throw e;
+	    }
+	}
+    }
+}
+
+async function driveParserFromReader(parser, reader) {
+
+    // run parser till the first yield
+    parser.next()
+    
+    while (true) {
+	console.log("driveParserFromReader: reading new chunk");
+	let { value: chunk, done: done } = await reader.read();
+
+	if (done) {
+	    console.log("driveParserFromReader: chunk done, throwing");
+	    // our stream is done, but the parser hasn't signaled
+	    // done-ness yet.
+	    let parser_state = parser.throw("endOfStream");
+	    if (parser_state.done) {
+		return parser_state.value;
+	    } else {
+		return undefined;
+	    }
+	}
+
+	console.log("driveParserFromReader: reading chunk: " + chunk);
+	for (let byte of chunk) {
+	    let parser_state = parser.next(byte);
+	    if (parser_state.done) {
+		console.log("driveParserFromReader: parser has signaled done.");
+		return parser_state.value;
+	    }
+	}
+    }
+}
