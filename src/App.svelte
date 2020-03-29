@@ -18,6 +18,7 @@
 
 	navigator.serviceWorker.addEventListener("message", (event => serviceworker_version = event.data));
 	navigator.serviceWorker.controller.postMessage("getversion");
+	navigator.serviceWorker.controller.postMessage("checkforupdates");
     }
 
     let status = 'load-dict';

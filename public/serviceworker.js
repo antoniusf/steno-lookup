@@ -22,17 +22,6 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
 	// Development
 	fetch(event.request)
-	// normal use
-	//caches.match(event.request).then((response) => {
-	//    if (response) {
-	//	return response;
-	//    } else {
-	//	response = new Response("Not Found: Your browser tried to request a resource that was not packaged with this app. This might be a bug in the app, but it really shouldn't happen.", {status: 404, statusText: "Not Found"});
-	//	console.log("Warning: tried to fetch unpackaged resource");
-	//	return response;
-	//	return fetch(event.request);
-	//    }
-	//})
     );
 });
 
