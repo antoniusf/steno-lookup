@@ -1,23 +1,40 @@
-import { openDB, deleteDB, wrap, unwrap } from 'idb';
+import { openDB } from 'idb';
+
+let db;
+
+// opens a new connection if necessary
+// analogous to https://github.com/jakearchibald/svgomg/blob/2082499381882eacf9836d7f891cf348edb65404/src/js/utils/storage.js#L5
+function getDB() {
+
+    if (!db) {
+	db = openDB("data", 1, {
+	    upgrade(db, oldVersion, newVersion, transaction) {
+		db.createObjectStore("fileversions", { keyPath: "url" });
+		db.createObjectStore("general", { keyPath: "name" });
+	    }
+	});
+    }
+
+    return db;
+}
 
 self.addEventListener('install', (event) => {
     event.waitUntil(setup().catch(error => console.log("Error in setup: " + error + " (" + error.fileName + ":" + error.lineNumber + ")")));
 });
 
 async function setup() {
-    const db = await openDB("data", 1, {
-	upgrade(db, oldVersion, newVersion, transaction) {
-	    db.createObjectStore("fileversions", { keyPath: "url" });
-	}
-    });
 
-    const store = db.transaction("fileversions").objectStore("fileversions");
-    const version = store.get("<app-version>");
-    if (version) {
-	await checkForUpdates();
-    } else {
-	await installNewestVersion();
-    }
+    const db = await getDB();
+    const store = db.transaction("general").objectStore("general");
+    const version = await store.get("local-version");
+    // if (version) {
+    // 	await checkForUpdates();
+    // } else {
+    // 	await installNewestVersion();
+    // }
+
+    //TESTING:
+    await installNewestVersion();
 }
 
 async function checkForUpdates() {
@@ -38,8 +55,26 @@ async function checkForUpdates() {
 	//
 	// Also, it's really fun to see that generators are so powerful.
 
-	let version_data = await driveParserFromReader(readVersionData(), reader);
+	const version_data = await driveParserFromReader(readVersionData(), reader);
+	const upstream_version = version_data.app_version;
+	const date = new Date();
 	console.log("version info parsed: " + JSON.stringify(version_data, null, 2));
+
+	const db = await getDB();
+	const store = db.transaction("general", "readwrite").objectStore("general");
+	await store.put({
+	    name: "last-checked",
+	    value: date
+	});
+	await store.put({
+	    name: "upstream-version",
+	    value: upstream_version
+	});
+	const local_version = await store.get("local-version");
+
+	notifyClients({ type: "update-info", update_available: (local_version == upstream_version), date_checked: date });
+
+	return version_data;
     } else {
 	console.log("retrieving version file failed.");
     }
@@ -48,22 +83,90 @@ async function checkForUpdates() {
 async function installNewestVersion() {
 
     // check one last time to make sure we're getting the most up-to-date version
-    await checkForUpdates();
+    const upstream_versioninfo = await checkForUpdates();
+
+    const db = await getDB();
+
+    const upstream_version = upstream_versioninfo.app_version;
+    const local_version = (await db.get("general", "local-version")).value;
+
+    console.log(`local_version: ${local_version}`);
+    console.log(`upstream_version: ${upstream_version}`);
+
+    if (local_version == upstream_version) {
+	return;
+    }
+
+    console.log("mismatch, updating.")
+
+    // we're requesting all resources first, to make sure that
+    // they're all reachable. then we'll update them all at once.
+    let add_to_cache = [];
+    let keep = []
+
+    for (const upstream_file of upstream_versioninfo.files) {
+
+	const url = upstream_file.url;
+	const local_file = await db.get("fileversions", url)
+	if (local_file) {
+	    console.log(`${url} / local hash: ${local_file.version} / upstream hash: ${upstream_file.version}`);
+	    if (upstream_file.version == local_file.version) {
+		// we don't need to update this file
+		console.log(`${url} hashes match, no update necessary.`);
+		keep.push(url);
+		continue;
+	    }
+	}
+	
+	const response = await fetch(upstream_file.version + "/" + url);
+	if (!response.ok) {
+	    // abort
+	    // TODO: handling
+	    throw new TypeError("installNewestVersion: couldn't retrieve newest version of file");
+	}
+
+	add_to_cache.push({ url: url, response: response, version: upstream_file.version });
+    }
+
+    console.log("add_to_cache: " + JSON.stringify(add_to_cache, null, 2));
+    console.log("keep: " + JSON.stringify(keep, null, 2));
 
     let cache = await caches.open('v1');
-    await cache.addAll([
-	'./', // add the base URL so it handles this correctly
-	'./index.html',
-	'./global.css',
-	'./favicon.png',
-	'./app.webmanifest', // cache the manifest and icon,
-	'./icon.png', // in case people decide they want to "add to homescreen" while offline
-	'./build/bundle.css',
-	'./build/bundle.js',
-	'./load-icon.svg',
-	'./abc-icon.svg',
-	'./STK-icon.svg'
-    ]);
+
+    // turns out, awaiting cache will also close a transaction.
+    // this means that we either have to give up on the idea of
+    // using a single transaction (which may be unnecessary anyways,
+    // since the important property is that cache and db match), or
+    // splitting the cache and db access into two separate loops.
+    // the second idea is more work, and would probably not be useful
+    // due to the above reason, so I'm going with the first.
+    const local_file_versioninfos = await db.getAll("fileversions");
+    for (const { url } of local_file_versioninfos) {
+	if (!keep.includes(url)) {
+	    console.log(`deleting file ${url} from cache`);
+	    const success = await cache.delete(url);
+	    await db.delete("fileversions", url);
+	    if (!success) {
+		console.log("installNewestVersion: mismatch between idb and cache, couldn't delete old version from cache (" + url + ")");
+	    }
+	}
+    }
+    console.log("old stuff deleted.");
+
+    for (const { url, version, response } of add_to_cache) {
+	await cache.put(url, response);
+	await db.put("fileversions", { url: url, version: version });
+    }
+
+    await db.put("general", { name: "local-version", value: upstream_version });
+}
+
+async function notifyClients (message) {
+    const clients = await clients.matchAll({ type: "window" });
+    console.log("notifyClients: posting message " + message + " to " + clients.length + " clients.");
+    for (const client of clients) {
+	client.postMessage(message);
+    }
 }
 
 self.addEventListener('fetch', (event) => {
@@ -82,7 +185,7 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('message', async (event) => {
     if (event.data == "getversion") {
-	event.source.postMessage("friday-rollup1.3");
+	event.source.postMessage("friday-fullversion0.10");
     }
     if (event.data == "checkforupdates") {
 	checkForUpdates().catch(error => console.log("Error in checkForUpdates: " + error + " (" + error.fileName + ":" + error.lineNumber + ")"));
@@ -122,8 +225,8 @@ function* readString() {
 
 function* readFileRecord() {
     let record = {};
-    record.filename = yield* readString();
-    record.hash = yield* readString();
+    record.url = yield* readString();
+    record.version = yield* readString();
     record.filesize = yield* readUint32();
     console.log("readFileRecord: " + JSON.stringify(record, null, 2));
 
@@ -138,7 +241,7 @@ function* readVersionData() {
 	    records.push(yield* readFileRecord());
 	} catch (e) {
 	    if (e == 'endOfStream') {
-		return { records: records, apphash: apphash }; 
+		return { files: records, app_version: apphash }; 
 	    } else {
 		throw e;
 	    }
