@@ -1,3 +1,5 @@
+import { openDB, deleteDB, wrap, unwrap } from 'idb';
+
 self.addEventListener('install', (event) => {
     event.waitUntil(setup());
 });
