@@ -9,9 +9,6 @@
 	    .then((registration) => {
 		registration.onupdatefound = (e => alert("update!!"));
 		console.log("Service worker registration successful.");
-		console.log("installing: " + registration.installing);
-		console.log("waiting: " + registration.waiting);
-		console.log("active: " + registration.active);
 	    }).catch((error) => {
 		console.log("Service worker registration failed: " + error);
 	    });
