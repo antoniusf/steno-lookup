@@ -5,6 +5,7 @@
 
   let files = [];
   export let status = "initializing";
+  export let update_info;
   let errormsg = "";
   let readprogress = 0;
   export let dictionary;
@@ -138,3 +139,12 @@ div#loaded > button {
     <button on:click={removeDict}>Remove</button>
   </div>
 {/if}
+
+<div style="grid-area: info">
+{#if (update_info.update_available)}
+<button on:click={event => navigator.serviceWorker.controller.postMessage("do-update")}>Update!</button>
+{:else}
+<button on:click={event => navigator.serviceWorker.controller.postMessage("checkforupdates")}>Check for updates</button>
+{/if}
+<p>Last checked: {Intl.DateTimeFormat("en-US", {year: "numeric", month:"long", day:"numeric", hour:"numeric", minute:"numeric"}).format(update_info.last_checked)}</p>
+</div>

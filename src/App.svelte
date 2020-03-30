@@ -7,19 +7,29 @@
     if ('serviceWorker' in navigator) {
 	navigator.serviceWorker.register('serviceworker.js')
 	    .then((registration) => {
-		registration.onupdatefound = (e => alert("update!!"));
+		registration.onupdatefound = (e => alert("update!!!!"));
 		console.log("Service worker registration successful.");
 	    }).catch((error) => {
 		console.log("Service worker registration failed: " + error);
 	    });
 
-	navigator.serviceWorker.addEventListener("message", (event => serviceworker_version = event.data));
+	navigator.serviceWorker.addEventListener("message", (event => {
+	    if (event.data.type == "version-info") {
+		serviceworker_version = event.data.serviceworker_version;
+	    } else if (event.data.type == "update-info") {
+		update_info.update_available = event.data.update_available;
+		update_info.date_checked = event.data.date_checked;
+		console.log(JSON.stringify(update_info, null, 2));
+
+	    }
+	}));
 	navigator.serviceWorker.controller.postMessage("getversion");
 	navigator.serviceWorker.controller.postMessage("checkforupdates");
     }
 
     let status = 'load-dict';
     let loader_status = 'initializing';
+    let update_info = {};
     let dictionary = null;
 
     function toggleLoad (event) {
@@ -45,7 +55,7 @@
     </button>
 	{#if status == "load-dict"}
         <h1>Load</h1>
-	    <FileLoader on:message="{e => status = 'query'}" bind:dictionary bind:status={loader_status}/>
+        <FileLoader on:message="{e => status = 'query'}" bind:dictionary bind:update_info bind:status={loader_status}/>
 	{:else if status == "query"}
         <h1>Lookup</h1>
         {#if dictionary === null}
