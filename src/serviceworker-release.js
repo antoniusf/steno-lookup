@@ -26,8 +26,8 @@ async function setup() {
 
     const db = await getDB();
     const store = db.transaction("general").objectStore("general");
-    const version = await store.get("local-version");
-    // if (version) {
+    const version_object = await store.get("local-version");
+    // if (version_object) {
     // 	await checkForUpdates();
     // } else {
     // 	await installNewestVersion();
@@ -63,16 +63,14 @@ async function checkForUpdates() {
 	const db = await getDB();
 	const store = db.transaction("general", "readwrite").objectStore("general");
 	await store.put({
-	    name: "last-checked",
-	    value: date
-	});
-	await store.put({
 	    name: "upstream-version",
 	    value: upstream_version
 	});
-	const local_version = await store.get("local-version");
+	const local_version_object = await store.get("local-version");
+	const local_version = local_version_object ? local_version_object.value : undefined;
 
-	notifyClients({ type: "update-info", update_available: (local_version == upstream_version), date_checked: date });
+	console.log("local version: " + local_version + " / upstream version " + upstream_version)
+	await notifyClients({ type: "update-info", update_available: (local_version != upstream_version), date_checked: date });
 
 	return version_data;
     } else {
@@ -88,7 +86,8 @@ async function installNewestVersion() {
     const db = await getDB();
 
     const upstream_version = upstream_versioninfo.app_version;
-    const local_version = (await db.get("general", "local-version")).value;
+    const local_version_object = await db.get("general", "local-version");
+    const local_version = local_version_object ? local_version_object.value : undefined;
 
     console.log(`local_version: ${local_version}`);
     console.log(`upstream_version: ${upstream_version}`);
@@ -101,21 +100,48 @@ async function installNewestVersion() {
 
     // we're requesting all resources first, to make sure that
     // they're all reachable. then we'll update them all at once.
-    let add_to_cache = [];
-    let keep = []
+    // let add_to_cache = [];
+    // let keep = []
+
+    // open a new cache for the new version,
+    // so we can replace everything cleanly
+    const new_cache_name = 'v1-' + upstream_version;
+    const old_cache_name = 'v1-' + local_version;
+    let new_cache = await caches.open(new_cache_name);
+    let old_cache = await caches.open(old_cache_name);
+
+    // we'll be keeping track of these, then store them
+    // in a single transaction. (we can't do this directly,
+    // since awaiting fetch and cache will close a transaction)
+    let new_versions = [];
 
     for (const upstream_file of upstream_versioninfo.files) {
 
 	const url = upstream_file.url;
 	const local_file = await db.get("fileversions", url)
+	console.log(`file ${url}`);
 	if (local_file) {
-	    console.log(`${url} / local hash: ${local_file.version} / upstream hash: ${upstream_file.version}`);
+	    console.log(`  local hash: ${local_file.version}\n  upstream hash: ${upstream_file.version}`);
+
 	    if (upstream_file.version == local_file.version) {
+
 		// we don't need to update this file
-		console.log(`${url} hashes match, no update necessary.`);
-		keep.push(url);
-		continue;
+		console.log("  hashes match, copying version from old cache.");
+		const response = await old_cache.match(url);
+
+		if (response) {
+		    await new_cache.put(url, response);
+		    continue;
+		}
+		else {
+		    console.log("  whoops, apparently this version wasn't in the old cache!! so we're fetching it again");
+		}
 	    }
+	    else {
+		console.log("  hashes don't match, so we're requesting the new version.");
+	    }
+	} else {
+	    console.log("file not in local cache, fetching");
 	}
 	
 	const response = await fetch(upstream_file.version + "/" + url);
@@ -125,46 +151,47 @@ async function installNewestVersion() {
 	    throw new TypeError("installNewestVersion: couldn't retrieve newest version of file");
 	}
 
-	add_to_cache.push({ url: url, response: response, version: upstream_file.version });
+	new_versions.push({ url: url, version: upstream_file.version });
+	await new_cache.put(url, response);
     }
 
-    console.log("add_to_cache: " + JSON.stringify(add_to_cache, null, 2));
-    console.log("keep: " + JSON.stringify(keep, null, 2));
+    console.log("new_versions: " + JSON.stringify(new_versions, null, 2));
+    console.log("new cache's keys: " + await new_cache.keys());
 
-    let cache = await caches.open('v1');
+    const transaction = db.transaction(["general", "fileversions"], "readwrite");
+    const fileversion_store = transaction.objectStore("fileversions");
+    const general_store = transaction.objectStore("general");
 
-    // turns out, awaiting cache will also close a transaction.
-    // this means that we either have to give up on the idea of
-    // using a single transaction (which may be unnecessary anyways,
-    // since the important property is that cache and db match), or
-    // splitting the cache and db access into two separate loops.
-    // the second idea is more work, and would probably not be useful
-    // due to the above reason, so I'm going with the first.
-    const local_file_versioninfos = await db.getAll("fileversions");
-    for (const { url } of local_file_versioninfos) {
-	if (!keep.includes(url)) {
-	    console.log(`deleting file ${url} from cache`);
-	    const success = await cache.delete(url);
-	    await db.delete("fileversions", url);
-	    if (!success) {
-		console.log("installNewestVersion: mismatch between idb and cache, couldn't delete old version from cache (" + url + ")");
-	    }
-	}
-    }
-    console.log("old stuff deleted.");
-
-    for (const { url, version, response } of add_to_cache) {
-	await cache.put(url, response);
-	await db.put("fileversions", { url: url, version: version });
+    for (const new_version_record of new_versions) {
+	await fileversion_store.put({
+	    url: new_version_record.url,
+	    version: new_version_record.version
+	});
     }
 
-    await db.put("general", { name: "local-version", value: upstream_version });
+    await general_store.put({ name: "local-version", value: upstream_version });
+
+    console.log("indexedDB updated");
+
+    // note that we're updating the local version number in the same transaction as
+    // everything else, so they're always in sync. what's more, at this point
+    // we still have both caches, one with the old and one with the new version,
+    // so everything is nice and clean. ("local-version" decides, which cache gets used.)
+
+    // now that indexeddb is successfully set to the new version, we can delete the old cache
+    if (await caches.delete(old_cache_name)) {
+	console.log("old cache deleted.");
+    } else {
+	console.log("coulnd't find old cache??");
+    }
+
+    notifyClients({ type: "update-info", update_available: false, last_checked: new Date() });
 }
 
 async function notifyClients (message) {
-    const clients = await clients.matchAll({ type: "window" });
-    console.log("notifyClients: posting message " + message + " to " + clients.length + " clients.");
-    for (const client of clients) {
+    const all_clients = await clients.matchAll({ type: "window" });
+    console.log("notifyClients: posting message " + message + " to " + all_clients.length + " clients.");
+    for (const client of all_clients) {
 	client.postMessage(message);
     }
 }
@@ -185,10 +212,13 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('message', async (event) => {
     if (event.data == "getversion") {
-	event.source.postMessage("friday-fullversion0.10");
+	event.source.postMessage({ type: "version-info", serviceworker_version: "friday-fullversion0.12" });
     }
-    if (event.data == "checkforupdates") {
+    else if (event.data == "checkforupdates") {
 	checkForUpdates().catch(error => console.log("Error in checkForUpdates: " + error + " (" + error.fileName + ":" + error.lineNumber + ")"));
+    }
+    else if (event.data == "do-update") {
+	installNewestVersion().catch(error => console.log("Error in installNewestVersion: " + error + " (" + error.fileName + ":" + error.lineNumber + ")"));
     }
 });
 
