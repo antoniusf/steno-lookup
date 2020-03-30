@@ -18,11 +18,12 @@ function getDB() {
     return db;
 }
 
-// convenience function that can unpack a value
-// from an object that may be undefined.
-function unpack (obj, property) {
-    if (obj) {
-        return obj[property];
+// retrieves a value from the databases "general" key-value store
+async function getDBValue (name) {
+    const db = await getDB();
+    const result = await db.get("general", name);
+    if (result) {
+        return result.value;
     } else {
         return undefined;
     }
@@ -66,20 +67,55 @@ async function checkForUpdates() {
 	// Also, it's really fun to see that generators are so powerful.
 
 	const version_data = await driveParserFromReader(readVersionData(), reader);
-	const upstream_version = version_data.app_version;
-	const date = new Date();
 	console.log("version info parsed: " + JSON.stringify(version_data, null, 2));
 
 	const db = await getDB();
+
+	const upstream_version = version_data.app_version;
+        const local_version = await getDBValue("local-version");
+	const date = new Date();
+        const update_available = (local_version != upstream_version);
+
+        let update_size = 0; // in bytes
+        if (update_available) {
+            // check the version data against indexedDB, so we can compute the size of the update
+            // if there was no update, the size just stays zero
+            const store = db.transaction("fileversions").objectStore("fileversions");
+            
+            for (const record of version_data.files) {
+                const local_record = await store.get(record.url);
+                if (local_record) {
+                    if (local_record.version != record.version) {
+                        update_size += record.filesize;
+                    }
+                } else {
+                    // file not stored
+                    update_size += record.filesize;
+                }
+            }
+        }
+
 	const store = db.transaction("general", "readwrite").objectStore("general");
-	await store.put({
-	    name: "upstream-version",
-	    value: upstream_version
-	});
-	const local_version = unpack(await store.get("local-version"), "value");
+        await store.put({
+            name: "date-checked",
+            value: date
+        });
+        await store.put({
+            name: "update-available",
+            value: update_available
+        });
+        await store.put({
+            name: "update_size",
+            value: update_size
+        });
 
 	console.log("local version: " + local_version + " / upstream version " + upstream_version)
-	await notifyClients({ type: "update-info", status: (local_version != upstream_version)? "available":"up-to-date", date_checked: date });
+	await notifyClients({
+            type: "update-info",
+            status: (update_available)? "available":"up-to-date",
+            date_checked: date,
+            update_size: update_size
+        });
 
 	return version_data;
     } else {
@@ -95,7 +131,7 @@ async function installNewestVersion() {
     const db = await getDB();
 
     const upstream_version = upstream_versioninfo.app_version;
-    const local_version = unpack(await db.get("general", "local-version"), "value")
+    const local_version = await getDBValue("local-version");
 
     console.log(`local_version: ${local_version}`);
     console.log(`upstream_version: ${upstream_version}`);
@@ -231,7 +267,7 @@ self.addEventListener('fetch', (event) => {
                     console.log("refetch successful.");
                     
                     // get app_version so we can open the cache
-                    const app_version = unpack(await db.get("general", "local-version"), "value");
+                    const app_version = await getDBValue("local-version");
 
                     // put in cache
                     const cache = await caches.open('v1-' + app_version);
@@ -271,13 +307,29 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('message', async (event) => {
     if (event.data == "getversion") {
-	event.source.postMessage({ type: "version-info", serviceworker_version: "friday-fullversion0.14" });
+	event.source.postMessage({
+            type: "version-info",
+            serviceworker_version: "friday-fullversion0.14"
+        });
     }
     else if (event.data == "checkforupdates") {
-	checkForUpdates().catch(error => console.log("Error in checkForUpdates: " + error + " (" + error.fileName + ":" + error.lineNumber + ")"));
+	checkForUpdates().catch((error) => {
+            console.log("Error in checkForUpdates: " + error + " (" + error.fileName + ":" + error.lineNumber + ")");
+        });
     }
     else if (event.data == "do-update") {
-	installNewestVersion().catch(error => console.log("Error in installNewestVersion: " + error + " (" + error.fileName + ":" + error.lineNumber + ")"));
+	installNewestVersion().catch((error) => {
+            console.log("Error in installNewestVersion: " + error + " (" + error.fileName + ":" + error.lineNumber + ")");
+        });
+    }
+    else if (event.data == "get-update-info") {
+        const update_available = await getDBValue("update-available");
+	event.source.postMessage({
+            type: "update-info",
+            status: update_available? "available":"up-to-date",
+            date_checked: await getDBValue("date-checked"),
+            update_size: await getDBValue("update-size")
+        });
     }
 });
 

@@ -20,13 +20,17 @@
             else if (event.data.type == "update-info") {
                 if (event.data.status == "up-to-date") {
                     update_info.update_available = false;
-                } else if (event.data.status == "available") {
+                }
+                else if (event.data.status == "available") {
                     update_info.update_available = true;
-                } else if (event.data.status == "installed") {
+                }
+                else if (event.data.status == "installed") {
                     update_info.update_available = false;
                     window.location.reload();
                 }
+
 		update_info.date_checked = event.data.date_checked;
+                update_info.update_size = event.data.update_size;
 		console.log(JSON.stringify(update_info, null, 2));
 	    }
 	}));
