@@ -18,6 +18,16 @@ function getDB() {
     return db;
 }
 
+// convenience function that can unpack a value
+// from an object that may be undefined.
+function unpack (obj, property) {
+    if (obj) {
+        return obj[property];
+    } else {
+        return undefined;
+    }
+}
+
 self.addEventListener('install', (event) => {
     event.waitUntil(setup().catch(error => console.log("Error in setup: " + error + " (" + error.fileName + ":" + error.lineNumber + ")")));
 });
@@ -66,8 +76,7 @@ async function checkForUpdates() {
 	    name: "upstream-version",
 	    value: upstream_version
 	});
-	const local_version_object = await store.get("local-version");
-	const local_version = local_version_object ? local_version_object.value : undefined;
+	const local_version = unpack(await store.get("local-version"), "value");
 
 	console.log("local version: " + local_version + " / upstream version " + upstream_version)
 	await notifyClients({ type: "update-info", status: (local_version != upstream_version)? "available":"up-to-date", date_checked: date });
@@ -86,8 +95,7 @@ async function installNewestVersion() {
     const db = await getDB();
 
     const upstream_version = upstream_versioninfo.app_version;
-    const local_version_object = await db.get("general", "local-version");
-    const local_version = local_version_object ? local_version_object.value : undefined;
+    const local_version = unpack(await db.get("general", "local-version"), "value")
 
     console.log(`local_version: ${local_version}`);
     console.log(`upstream_version: ${upstream_version}`);
@@ -223,8 +231,7 @@ self.addEventListener('fetch', (event) => {
                     console.log("refetch successful.");
                     
                     // get app_version so we can open the cache
-                    // this request is guaranteed to succeed, since we have an intact file record
-                    const app_version = (await db.get("general", "local-version")).value;
+                    const app_version = unpack(await db.get("general", "local-version"), "value");
 
                     // put in cache
                     const cache = await caches.open('v1-' + app_version);
