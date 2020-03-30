@@ -160,7 +160,7 @@ h2 {
 
 <h2>Updates</h2>
 <div id="updates">
-  <p>Last checked: {Intl.DateTimeFormat("en-US", {year: "numeric", month:"long", day:"numeric", hour:"numeric", minute:"numeric"}).format(update_info.last_checked)}</p>
+  <p>Last checked: {Intl.DateTimeFormat("en-US", {year: "numeric", month:"long", day:"numeric", hour:"numeric", minute:"numeric"}).format(update_info.date_checked)}</p>
 
   {#if (update_info.update_available)}
     <button on:click={event => navigator.serviceWorker.controller.postMessage("do-update")}>Update!</button>
