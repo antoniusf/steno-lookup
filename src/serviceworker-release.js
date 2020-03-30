@@ -70,7 +70,7 @@ async function checkForUpdates() {
 	const local_version = local_version_object ? local_version_object.value : undefined;
 
 	console.log("local version: " + local_version + " / upstream version " + upstream_version)
-	await notifyClients({ type: "update-info", update_available: (local_version != upstream_version), date_checked: date });
+	await notifyClients({ type: "update-info", status: (local_version != upstream_version)? "available":"up-to-date", date_checked: date });
 
 	return version_data;
     } else {
@@ -93,6 +93,7 @@ async function installNewestVersion() {
     console.log(`upstream_version: ${upstream_version}`);
 
     if (local_version == upstream_version) {
+        console.log("versions match, we're all good.")
 	return;
     }
 
@@ -144,7 +145,7 @@ async function installNewestVersion() {
 	    console.log("file not in local cache, fetching");
 	}
 	
-	const response = await fetch(upstream_file.version + "/" + url);
+	const response = await fetch("versioned/" + upstream_file.version + "/" + url);
 	if (!response.ok) {
 	    // abort
 	    // TODO: handling
@@ -185,7 +186,7 @@ async function installNewestVersion() {
 	console.log("coulnd't find old cache??");
     }
 
-    notifyClients({ type: "update-info", update_available: false, last_checked: new Date() });
+    notifyClients({ type: "update-info", status: "installed", last_checked: new Date() });
 }
 
 async function notifyClients (message) {
@@ -197,22 +198,73 @@ async function notifyClients (message) {
 }
 
 self.addEventListener('fetch', (event) => {
-    event.respondWith(
-	caches.match(event.request).then((response) => {
-	    if (response) {
-		return response;
-	    } else {
-		response = new Response("Not Found: Your browser tried to request a resource that was not packaged with this app. This might be a bug in the app, but it really shouldn't happen.", {status: 404, statusText: "Not Found"});
-		console.log("Warning: tried to fetch unpackaged resource: " + event.request.url);
-		return response;
-	    }
-	}).catch((error) => console.log("cache lookup error: " + error + " (" + error.fileName + ":" + error.lineNumber + ")"))
-    );
+    // use an iife so I can write async code
+    event.respondWith((async (event) => {
+        const response = await caches.match(event.request);
+        if (response) {
+            return response;
+        } else {
+            console.log(`file ${event.request.url} not in cache`);
+            // our urls include only the path, but with an initial ./
+            // (maybe I should change this, I don't even know why)
+            const url = "." + new URL(event.request.url).pathname;
+
+            // check if we should actually have a copy of this resource
+            // (and it was evicted from cache or something)
+            const db = await getDB();
+            const file_record = await db.get("fileversions", url);
+
+            if (file_record) {
+                console.log("... but it should be. Refetching.");
+                
+                // try to re-fetch our version of that resource
+                const response = await fetch("versioned/" + file_record.version + "/" + url);
+                if (response.ok) {
+                    console.log("refetch successful.");
+                    
+                    // get app_version so we can open the cache
+                    // this request is guaranteed to succeed, since we have an intact file record
+                    const app_version = (await db.get("general", "local-version")).value;
+
+                    // put in cache
+                    const cache = await caches.open('v1-' + app_version);
+                    // note: we can't use the request object here, since that has the
+                    // extra version on it!
+                    // we also have to clone the response, so that it doesn't get used up.
+                    // we still have to return it!
+                    await cache.put(file_record.url, response.clone());
+                    return response;
+                } else {
+                    // we're not getting a version from the server, so we probably have to do
+                    // a full refresh
+                    console.log("refetch failed. trying to re-install completely");
+                    await installNewestVersion();
+                    console.log("trying to get file from cache after re-install");
+                    const response = await caches.match(event.request);
+                    if (response) {
+                        console.log("success!");
+                        return response;
+                    } else {
+                        console.log("... okay, that didn't work, that's not good.");
+                        const fail_response = new Response("This version of the file should be in the cache, but it wasn't. I tried re-installing the app to fix this, but something just went really wrong and it's still not here. I'm sorry.", {status: 500, statusText: "Internal Error"});
+                        return fail_response;
+                    }
+                }
+            } else {
+                // okay, this file wasn't in cache, and according to our database, it shouldn't be.
+                const fail_response = new Response("Not Found: Your browser tried to request a resource that was not packaged with this app. This might be a bug in the app, but it really shouldn't happen.", {status: 404, statusText: "Not Found"});
+                console.log("Warning: tried to fetch unpackaged resource: " + event.request.url);
+                return fail_response;
+            }
+        }
+    })(event).catch((error) => {
+        console.log("cache lookup error: " + error + " (" + error.fileName + ":" + error.lineNumber + ")");
+    }));
 });
 
 self.addEventListener('message', async (event) => {
     if (event.data == "getversion") {
-	event.source.postMessage({ type: "version-info", serviceworker_version: "friday-fullversion0.12" });
+	event.source.postMessage({ type: "version-info", serviceworker_version: "friday-fullversion0.14" });
     }
     else if (event.data == "checkforupdates") {
 	checkForUpdates().catch(error => console.log("Error in checkForUpdates: " + error + " (" + error.fileName + ":" + error.lineNumber + ")"));

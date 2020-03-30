@@ -80,23 +80,31 @@
 
 <style>
 input {
-  grid-area: query;
+    width: 100%;
+    margin: 0;
+    margin-bottom: 0.5em;
 }
 
 p {
-  grid-area: main;
   margin: 0;
 }
 
+button {
+  margin: 0;
+  padding: 0.3em 0.6em;
+  background-color: green;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
 div#loaded {
-  grid-area: query;
   display: flex;
   margin: 0;
 }
 
 div#loaded > p {
   margin: 0;
-  padding: 0;
   flex-grow: 1;
   text-align: left;
   padding: 0.3em 0.6em;
@@ -104,13 +112,23 @@ div#loaded > p {
   border-right: none;
 }
 
-div#loaded > button {
-  margin: 0;
-  padding: 0.3em 0.6em;
-  background-color: green;
-  color: white;
-  border: none;
-  cursor: pointer;
+div#updates {
+    display: flex;
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+div#updates > p {
+    margin: 0;
+    padding: 0.4em 0.2em;
+    flex-grow: 1;
+    text-align: left;
+}
+
+h2 {
+    margin: 2em 0 0.5em 0;
+    padding: 0;
+    font-size: 1.2rem;
 }
 </style>
 
@@ -140,11 +158,13 @@ div#loaded > button {
   </div>
 {/if}
 
-<div style="grid-area: info">
-{#if (update_info.update_available)}
-<button on:click={event => navigator.serviceWorker.controller.postMessage("do-update")}>Update!</button>
-{:else}
-<button on:click={event => navigator.serviceWorker.controller.postMessage("checkforupdates")}>Check for updates</button>
-{/if}
-<p>Last checked: {Intl.DateTimeFormat("en-US", {year: "numeric", month:"long", day:"numeric", hour:"numeric", minute:"numeric"}).format(update_info.last_checked)}</p>
+<h2>Updates</h2>
+<div id="updates">
+  <p>Last checked: {Intl.DateTimeFormat("en-US", {year: "numeric", month:"long", day:"numeric", hour:"numeric", minute:"numeric"}).format(update_info.last_checked)}</p>
+
+  {#if (update_info.update_available)}
+    <button on:click={event => navigator.serviceWorker.controller.postMessage("do-update")}>Update!</button>
+  {:else}
+    <button on:click={event => navigator.serviceWorker.controller.postMessage("checkforupdates")}>Check</button>
+  {/if}
 </div>

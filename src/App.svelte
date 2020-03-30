@@ -7,7 +7,7 @@
     if ('serviceWorker' in navigator) {
 	navigator.serviceWorker.register('serviceworker.js')
 	    .then((registration) => {
-		registration.onupdatefound = (e => alert("update!!!!"));
+		registration.onupdatefound = (e => alert("update!!"));
 		console.log("Service worker registration successful.");
 	    }).catch((error) => {
 		console.log("Service worker registration failed: " + error);
@@ -16,11 +16,18 @@
 	navigator.serviceWorker.addEventListener("message", (event => {
 	    if (event.data.type == "version-info") {
 		serviceworker_version = event.data.serviceworker_version;
-	    } else if (event.data.type == "update-info") {
-		update_info.update_available = event.data.update_available;
+	    }
+            else if (event.data.type == "update-info") {
+                if (event.data.status == "up-to-date") {
+                    update_info.update_available = false;
+                } else if (event.data.status == "available") {
+                    update_info.update_available = true;
+                } else if (event.data.status == "installed") {
+                    update_info.update_available = false;
+                    window.location.reload();
+                }
 		update_info.date_checked = event.data.date_checked;
 		console.log(JSON.stringify(update_info, null, 2));
-
 	    }
 	}));
 	navigator.serviceWorker.controller.postMessage("getversion");
@@ -31,6 +38,11 @@
     let loader_status = 'initializing';
     let update_info = {};
     let dictionary = null;
+    let titles = {
+        "load-dict": "Load",
+        "query": "Lookup"
+    }
+    
 
     function toggleLoad (event) {
         if (status == 'load-dict') {
@@ -42,49 +54,58 @@
     }
 </script>
 
-<main>
+<div id="container">
+  <header>
+    <h1>{titles[status]}</h1>
     <button id="switch" on:click={e => { if (status == "find-stroke") { status = "query" } else { status = "find-stroke"} }}>
       {#if (status == "find-stroke")}
         <img src="abc-icon.svg" alt="lookup steno"/>
       {:else}
-	<img src="STK-icon.svg" alt="lookup english"/>
+        <img src="STK-icon.svg" alt="lookup english"/>
       {/if}
     </button>
     <button id="load" class={(status == 'load-dict') ? 'selected' : ''} on:click={toggleLoad}>
       <img src="load-icon.svg" alt="load"/>
     </button>
-	{#if status == "load-dict"}
-        <h1>Load</h1>
-        <FileLoader on:message="{e => status = 'query'}" bind:dictionary bind:update_info bind:status={loader_status}/>
-	{:else if status == "query"}
-        <h1>Lookup</h1>
-        {#if dictionary === null}
-        <p id="nodict">No dictionary loaded.</p>
-        {:else}
-        <Lookup bind:dictionary={dictionary.data}/>
-        {/if}
-	{/if}
+  </header>
 
-    <p id="version-info">Service worker version: {serviceworker_version}</p>
-</main>
+  <main>
+    {#if status == "load-dict"}
+      <FileLoader on:message="{e => status = 'query'}" bind:dictionary bind:update_info bind:status={loader_status}/>
+    {:else if status == "query"}
+      {#if dictionary === null}
+        <p id="nodict">No dictionary loaded.</p>
+      {:else}
+        <Lookup bind:dictionary={dictionary.data}/>
+      {/if}
+    {/if}
+  </main>
+
+  <p id="version-info">Service worker version: {serviceworker_version}</p>
+</div>
 
 <style>
-    main {
+    div#container {
         max-width: 25em;
         width: 100%;
         font-family: Arial;
         text-align: center;
         margin: 0 auto;
-        
+        padding: 0;
+    }
+
+    header {
+        width: 100%;
+        margin: 0;
+        margin-bottom: 0.5em;
+        padding: 0;
+        /* I know I could use flexbox for this,
+         * but grid just seems easier */
         display: grid;
         grid-template-columns: minmax(0, 1fr) 2em 2em;
-        grid-template-rows: 2em auto auto auto;
-        grid-template-areas: "mode switch load"
-                             "query query query"
-                             "main main main"
-			     "info info info";
+        grid-template-rows: 2em;
+        grid-template-areas: "mode switch load";
         grid-column-gap: 0.3em;
-        grid-row-gap: 0.5em;
     }
 
     h1 {
