@@ -1,3 +1,7 @@
+// TODO: clear out unused caches?
+//       i mean, this should happen normally in installNewestVersion()
+//       but if that crashes we may accumulate caches we don't need
+
 import { openDB } from 'idb';
 
 let db;
@@ -16,6 +20,16 @@ function getDB() {
     }
 
     return db;
+}
+
+let cached_local_version;
+
+async function getActiveCache() {
+    if (!cached_local_version) {
+	cached_local_version = await getDBValue("local-version");
+    }
+    const active_cache = await caches.open("v1-" + cached_local_version);
+    return active_cache;
 }
 
 // retrieves a value from the databases "general" key-value store
@@ -215,6 +229,7 @@ async function installNewestVersion() {
     }
 
     await general_store.put({ name: "local-version", value: upstream_version });
+    cached_local_version = upstream_version;
 
     console.log("indexedDB updated");
 
@@ -244,8 +259,13 @@ async function notifyClients (message) {
 self.addEventListener('fetch', (event) => {
     // use an iife so I can write async code
     event.respondWith((async (event) => {
-        const response = await caches.match(event.request);
+	const start = performance.now();
+	const cache = await getActiveCache();
+        const response = await cache.match(event.request);
+	// const response = await caches.match(event.request);
         if (response) {
+	    const end = performance.now();
+	    console.log("fast path perf: " + (end - start));
             return response;
         } else {
             console.log(`file ${event.request.url} not in cache`);
