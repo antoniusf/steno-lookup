@@ -1,6 +1,8 @@
 <script>
     import FileLoader from './FileLoader.svelte';
     import Lookup from './Lookup.svelte';
+    import FindStroke from './FindStroke.svelte';
+
 
     let serviceworker_version = "(unknown)";
 
@@ -81,6 +83,12 @@
         <p id="nodict">No dictionary loaded.</p>
       {:else}
         <Lookup bind:dictionary={dictionary.data}/>
+      {/if}
+    {:else if status == "find-stroke"}
+      {#if dictionary === null} // TODO: un-duplicate this code
+        <p id="nodict">No dictionary loaded.</p>
+      {:else}
+        <FindStroke />
       {/if}
     {/if}
   </main>

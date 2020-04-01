@@ -1,4 +1,5 @@
 self.addEventListener('install', (event) => {
+    const start = performance.now();
     event.waitUntil(
 	caches.open('v1').then((cache) => {
 	    return cache.addAll([
@@ -14,15 +15,20 @@ self.addEventListener('install', (event) => {
 		'./abc-icon.svg',
 		'./STK-icon.svg'
 	    ]);
+	}).then(() => {
+	    console.log("perf: install took " + (performance.now() - start) + "ms");
 	})
     );
 });
 
 self.addEventListener('fetch', (event) => {
-    event.respondWith(
+    const start = performance.now();
+    event.respondWith((async (event) => {
 	// Development
-	fetch(event.request)
-    );
+	const response = await caches.match(event.request);
+	console.log("perf: fetch took " + (performance.now() - start) + "ms");
+	return response;
+    })(event));
 });
 
 self.addEventListener('message', (event) => {
