@@ -60,7 +60,10 @@ export default [
             format: 'iife',
             sourcemap: true
         },
-        plugins: [ resolve() ]
+        plugins: [
+            resolve(),
+            production && terser()
+        ]
     }
 ];
 

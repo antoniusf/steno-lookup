@@ -4,6 +4,8 @@
 
 import { openDB } from 'idb';
 
+const start = performance.now();
+
 let db;
 
 // opens a new connection if necessary
@@ -11,6 +13,7 @@ let db;
 function getDB() {
 
     if (!db) {
+	console.log("perf: opening db");
 	db = openDB("data", 1, {
 	    upgrade(db, oldVersion, newVersion, transaction) {
 		db.createObjectStore("fileversions", { keyPath: "url" });
@@ -26,6 +29,7 @@ let cached_local_version;
 
 async function getActiveCache() {
     if (!cached_local_version) {
+	console.log("perf: retrieving active cache name from db");
 	cached_local_version = await getDBValue("local-version");
     }
     const active_cache = await caches.open("v1-" + cached_local_version);
@@ -64,6 +68,7 @@ async function setup() {
 
 async function checkForUpdates() {
 
+    const start = performance.now();
     const response = await fetch("./version", {cache: "no-cache"});
     if (response.ok) {
 	console.log("reading version info...");
@@ -131,6 +136,8 @@ async function checkForUpdates() {
             update_size: update_size
         });
 
+	console.log("perf: checkForUpdates took " + (performance.now() - start) + "ms");
+
 	return version_data;
     } else {
 	console.log("retrieving version file failed.");
@@ -138,6 +145,8 @@ async function checkForUpdates() {
 }
 
 async function installNewestVersion() {
+
+    const start = performance.now();
 
     // check one last time to make sure we're getting the most up-to-date version
     const upstream_versioninfo = await checkForUpdates();
@@ -173,6 +182,8 @@ async function installNewestVersion() {
     // in a single transaction. (we can't do this directly,
     // since awaiting fetch and cache will close a transaction)
     let new_versions = [];
+
+    console.log("perf: time to downloading files " + (performance.now() - start) + "ms");
 
     for (const upstream_file of upstream_versioninfo.files) {
 
@@ -214,6 +225,8 @@ async function installNewestVersion() {
 	await new_cache.put(url, response);
     }
 
+    console.log("time after downloading files: " + (performance.now() - start) + "ms");
+
     console.log("new_versions: " + JSON.stringify(new_versions, null, 2));
     console.log("new cache's keys: " + await new_cache.keys());
 
@@ -244,6 +257,8 @@ async function installNewestVersion() {
     } else {
 	console.log("coulnd't find old cache??");
     }
+
+    console.log("perf: installNewestVersion took " + (performance.now() - start) + "ms");
 
     notifyClients({ type: "update-info", status: "installed", last_checked: new Date() });
 }
@@ -329,7 +344,7 @@ self.addEventListener('message', async (event) => {
     if (event.data == "getversion") {
 	event.source.postMessage({
             type: "version-info",
-            serviceworker_version: "friday-fullversion0.14"
+            serviceworker_version: "friday-fullversion0.15"
         });
     }
     else if (event.data == "checkforupdates") {
@@ -441,3 +456,5 @@ async function driveParserFromReader(parser, reader) {
 	}
     }
 }
+
+console.log("perf: service worker startup took " + (performance.now() - start) + "ms");
