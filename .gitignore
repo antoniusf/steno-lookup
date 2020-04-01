@@ -1,6 +1,7 @@
 /node_modules/
 /public/build/
 /public/serviceworker-release.js
+/public/serviceworker-release.js.map
 
 .DS_Store
 
