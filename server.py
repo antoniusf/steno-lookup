@@ -30,16 +30,15 @@ def packString(buf, string):
     buf.extend(struct.pack("<H", len(string)))
     buf.extend(string)
 
-def packFileVersionRecord(buf, filename, hash, size):
+def packFileVersionRecord(buf, filename):
     
     packString(buf, filename)
-    packString(buf, hash)
-    buf.extend(struct.pack("<I", size))
 
 def generateFileVersionRecords(files):
 
     buf = bytearray()
     filehashes = []
+    size = 0
     
     for filename in files:
         with open(filename, "rb") as f:
@@ -48,9 +47,7 @@ def generateFileVersionRecords(files):
             hasher.update(data)
             filehash = hasher.hexdigest()
             filehashes.append((filename, hasher.digest()))
-            
-            packFileVersionRecord(buf, filename, filehash, len(data))
-            print("file {} / hash: {}".format(filename, filehash))
+            size += len(data)
 
     hasher = hashlib.new("sha256")
     # sort so that the order of files doesn't matter
@@ -61,9 +58,13 @@ def generateFileVersionRecords(files):
         hasher.update(bytes(1))
         
     apphash = hasher.hexdigest()
-    apphash_packed = bytearray()
-    packString(apphash_packed, apphash)
-    buf[:0] = apphash_packed
+    print("\n\nCurrent version: " + apphash + "\n")
+    packString(buf, apphash)
+    buf.extend(struct.pack("<I", size))
+    buf.extend(struct.pack("<H", len(files)))
+
+    for filename in files:
+        packFileVersionRecord(buf, filename)
 
     return buf
 
