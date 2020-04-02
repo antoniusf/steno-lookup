@@ -1,5 +1,7 @@
 <script>
+  // TODO: move updater into its own separate element
   import { createEventDispatcher, onMount } from 'svelte';
+  import { textToStroke } from './util';
 
   const dispatch = createEventDispatcher();
 
@@ -106,7 +108,23 @@
       }
       dictionary = {name: files[0].name, data: Object.entries(data)};
 
-      window.localStorage.setItem("dictionary", JSON.stringify(dictionary));
+      dictionary.by_stroke = {};
+      for (const [index, [strokes, translation]] of dictionary.data.entries()) {
+	  for (const stroke_text of strokes.split("/")) {
+
+	      const stroke = textToStroke(stroke_text);
+
+	      if (dictionary.by_stroke.hasOwnProperty(stroke)) {
+		  dictionary.by_stroke[stroke].push(index);
+	      }
+	      else {
+		  dictionary.by_stroke[stroke] = [index];
+	      }
+	  }
+      }
+
+      // TODO: figure out storage format handling
+      //window.localStorage.setItem("dictionary", JSON.stringify(dictionary));
 
       status = "loaded";
       signalDone();

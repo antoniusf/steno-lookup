@@ -36,8 +36,12 @@
 		console.log(JSON.stringify(update_info, null, 2));
 	    }
 	}));
-	navigator.serviceWorker.controller.postMessage("getversion");
-	navigator.serviceWorker.controller.postMessage("checkforupdates");
+
+	if (navigator.serviceWorker.controller) {
+	    navigator.serviceWorker.controller.postMessage("getversion");
+	    // TODO: add a timer for checkforupdates or sth
+	    navigator.serviceWorker.controller.postMessage("checkforupdates");
+	}
     }
 
     let status = 'load-dict';
@@ -88,7 +92,7 @@
       {#if dictionary === null} // TODO: un-duplicate this code
         <p id="nodict">No dictionary loaded.</p>
       {:else}
-        <FindStroke />
+        <FindStroke bind:dictionary={dictionary}/>
       {/if}
     {/if}
   </main>

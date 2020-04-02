@@ -1,12 +1,18 @@
 <script>
     import { keylistToStroke, strokeToText, textToStroke, strokeToKeydict } from './util.js';
-    const keys = ["S-", "T-", "K-", "P-", "W-", "H-", "R-", "A", "O", "star", "E", "U", "-F", "-R", "-P", "-B", "-L", "-G", "-T", "-S", "-D", "-Z"];
+    import { createEventDispatcher } from 'svelte';
+    
+    const keys = ["#", "S-", "T-", "K-", "P-", "W-", "H-", "R-", "A", "O", "*", "E", "U", "-F", "-R", "-P", "-B", "-L", "-G", "-T", "-S", "-D", "-Z"];
+    const replace_map = {"number": "#", "star": "*"};
+    
     let state = {};
-    let stroke = 0;
-    let strokeText = "";
     for (const key of keys) {
 	state[key] = false;
     }
+
+    export let stroke = 0;
+
+    const dispatch = createEventDispatcher();
 
     //$: stroke = keylistToStroke(
     //    Object.entries(state)
@@ -15,12 +21,18 @@
     //   );
     $: state = strokeToKeydict(stroke);
 
-    $: stroke = textToStroke(strokeText.toUpperCase());
-    //$: strokeText = strokeToText(stroke);
-
     function handleClick(event) {
 	// toggle the button's state
-	state[event.target.id] ^= true;
+	const button = replace_map[event.target.id] || event.target.id;
+	state[button] ^= true;
+
+	dispatch('strokeChanged', {
+	    stroke: keylistToStroke(
+		Object.entries(state)
+    		    .filter(([key, state]) => state) // use only keys where state is true
+                    .map(([key, state]) => key)
+	    )
+	});
     }
 </script>
 
@@ -28,8 +40,9 @@
   div#steno-keyboard {
     display: grid;
     grid-template-columns: repeat(10, 1fr);
-    grid-template-rows: auto auto auto;
+    grid-template-rows: auto auto auto auto;
     grid-template-areas:
+      "number number number number number number number number number number"
       "S- T- P- H- star -F -P -L -T -D"
       "S- K- W- R- star -R -B -G -S -Z"
       ".  .  A- O-   .  -E -U  .  .  .";
@@ -50,6 +63,11 @@
     color: white;
     cursor: pointer;
     height: 0;
+  }
+
+  button#number {
+    grid-area: number;
+    padding-bottom: 2%;
   }
 
   button.active {
@@ -187,6 +205,7 @@
 </style>
 
 <div id="steno-keyboard">
+  <button id="number" on:click={handleClick} class:active={state["#"]}></button>
   <button id="S-" on:click={handleClick} class:active={state["S-"]} class="long-key"></button>
   <button id="T-" on:click={handleClick} class:active={state["T-"]} class="top-row"></button>
   <button id="K-" on:click={handleClick} class:active={state["K-"]} class="bottom-row"></button>
@@ -204,7 +223,7 @@
   <div id="O-" class="vowel-container">
     <button id="O" on:click={handleClick} class:active={state["O"]} class="left-vowel"></button>
   </div>
-  <button id="star" on:click={handleClick} class:active={state["star"]} class="long-key"></button>
+  <button id="star" on:click={handleClick} class:active={state["*"]} class="long-key"></button>
   <div id="-E" class="vowel-container">
     <button id="E" on:click={handleClick} class:active={state["E"]} class="right-vowel"></button>
   </div>
@@ -222,5 +241,3 @@
   <button id="-D" on:click={handleClick} class:active={state["-D"]} class="top-row"></button>
   <button id="-Z" on:click={handleClick} class:active={state["-Z"]} class="bottom-row"></button>
 </div>
-
-<input type="text" bind:value={strokeText} />

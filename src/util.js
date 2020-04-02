@@ -3,6 +3,7 @@
 // that it simplifies the conversion code :D)
 // - it also uniquely identifies hyphen keys as those without a dash!
 export const steno_keys = [
+    "#",
     "S-",
     "T-", "K-",
     "P-", "W-",
@@ -16,6 +17,19 @@ export const steno_keys = [
     "-T", "-S",
     "-D", "-Z"
 ];
+
+const number_keys = {
+    "0": "O-",
+    "1": "S-",
+    "2": "T-",
+    "3": "P-",
+    "4": "H-",
+    "5": "A-",
+    "6": "-F",
+    "7": "-P",
+    "8": "-L",
+    "9": "-T"
+}
 
 // convert a list of steno keys to a binary stroke number (int32)
 // this has a direct correspondence to keys, so the key with index 0
@@ -50,7 +64,7 @@ export function strokeToText(stroke) {
 
 	    text += key.replace("-", "")
 
-	    if (!key.includes("-")) {
+	    if (!key.includes("-") && key != "#") {
 		// this is an implicit hyphen key
 		needs_separator = false;
 	    }
@@ -73,7 +87,10 @@ export function textToStroke(text) {
 	// this will work directly for A, O, *, E, U – the implicit hyphen keys
 	let key_index = steno_keys.indexOf(character);
 	
-	if (key_index >= 0) {
+	// number bar
+	if (key_index == 0) {
+	}
+	else if (key_index > 0) {
 	    // this was an implicit hyphen key
 	    next_consonant_is_right_bank = true;
 	}
@@ -86,8 +103,17 @@ export function textToStroke(text) {
 		key_index = steno_keys.indexOf(character + "-");
 	    }
 	    if (key_index < 0) {
-		console.log("invalid key!"); //TODO: throw something
-		continue;
+		const translated_key = number_keys[character];
+		if (translated_key) {
+		    // this sets the bit at index 0, ie the number bar.
+		    // a bit confusing, but it should work.
+		    stroke |= 1;
+		    key_index = steno_keys.indexOf(translated_key);
+		}
+		else {
+		    console.log("invalid key!"); //TODO: throw something
+		    continue;
+		}
 	    }
 	}
 
