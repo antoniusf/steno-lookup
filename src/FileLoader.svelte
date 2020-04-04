@@ -15,6 +15,9 @@
   onMount(() => {
 
       if (status == "initializing") {
+        // TODO: move to indexedDB so we can store the prepared form of
+        // the dictionary directly, and save the load time.
+        // this should still be smaller than the json representation.
         let stored_dictionary = window.localStorage.getItem("dictionary");
         if (stored_dictionary === null) {
             status = "choosefile";
@@ -100,6 +103,7 @@
 
   function loadJson (filename, json) {
       // TODO: better error handling, instead of just letting the errors bubble up
+      const start = performance.now();
       const data = JSON.parse(json);
       let dictionary = { name: filename };
 
@@ -166,6 +170,8 @@
 	  }
 	  return [stroke_texts.join("/"), this.translations[index]];
       };
+
+      console.log(`loadJson took ${performance.now() - start}ms`);
 
       return dictionary;
   }
