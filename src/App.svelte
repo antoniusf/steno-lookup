@@ -86,7 +86,8 @@
       {#if dictionary === null}
         <p id="nodict">No dictionary loaded.</p>
       {:else}
-        <Lookup bind:dictionary={dictionary.data}/>
+        <!-- TODO: does this have to be a bind? I mean, we shouldn't really get any data out this way.-->
+        <Lookup bind:dictionary={dictionary}/>
       {/if}
     {:else if status == "find-stroke"}
       {#if dictionary === null} // TODO: un-duplicate this code

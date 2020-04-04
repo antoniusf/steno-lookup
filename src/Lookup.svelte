@@ -1,5 +1,6 @@
 <script>
     import ResultsTable from './ResultsTable.svelte';
+    import { strokeToText } from './util.js';
     
     export let dictionary;
     let query = "";
@@ -75,18 +76,18 @@
 	// console.log("query \"" + queryRunnerState.query + "\", chunk " + queryRunnerState.chunk);
 	let startIndex = queryRunnerState.chunk * itemsPerChunk;
 	let endIndex = startIndex + itemsPerChunk;
-	endIndex = Math.min(endIndex, dictionary.length);
+	endIndex = Math.min(endIndex, dictionary.translations.length);
 	
 	for (let i=startIndex; i<endIndex; i++) {
-	    let entry = dictionary[i];
-	    if (entry[1] == queryRunnerState.query) {
-		query_result.push(entry);
+	    let translation = dictionary.translations[i];
+	    if (translation == queryRunnerState.query) {
+		query_result.push(dictionary.getEntry(i));
 	    }
 	}
 
 	queryRunnerState.chunk += 1;
 
-	if (endIndex === dictionary.length) {
+	if (endIndex === dictionary.translations.length) {
 	    queryRunnerState.running = false;
 
 	    // re-assign query_result so svelte updates the view

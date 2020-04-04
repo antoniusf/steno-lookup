@@ -1,7 +1,7 @@
 <script>
   // TODO: move updater into its own separate element
   import { createEventDispatcher, onMount } from 'svelte';
-  import { textToStroke } from './util';
+  import { textToStroke, strokeToText } from './util';
 
   const dispatch = createEventDispatcher();
 
@@ -19,7 +19,9 @@
         if (stored_dictionary === null) {
             status = "choosefile";
         } else {
-            dictionary = JSON.parse(stored_dictionary); // TODO: can this fail?
+            // TODO: can this fail?
+	    const filename = window.localStorage.getItem("dictionary-name");
+            dictionary = loadJson(filename, stored_dictionary); 
             status = "loaded";
             signalDone();
         }
@@ -86,45 +88,100 @@
 	      status = "wrongtype";
 	  } else {
 	      status = "reading";
-          let filereader = new FileReader();
-          filereader.addEventListener("load", event => finishReadFile(filereader));
-          filereader.addEventListener("progress", event => { readprogress = Math.floor(event.loaded / event.total * 100); });
-          filereader.addEventListener("abort", event => { status = "load-aborted"; });
-          filereader.addEventListener("error", event => { status = "error"; errormsg = "Your browser failed to load the file. Please try again."});
-          filereader.readAsText(file);
-	      //readpromise = file.text().then(JSON.parse).then(finishReadFile);
+              let filereader = new FileReader();
+              filereader.addEventListener("load", event => finishReadFile(filereader));
+              filereader.addEventListener("progress", event => { readprogress = Math.floor(event.loaded / event.total * 100); });
+              filereader.addEventListener("abort", event => { status = "load-aborted"; });
+              filereader.addEventListener("error", event => { status = "error"; errormsg = "Your browser failed to load the file. Please try again."});
+              filereader.readAsText(file);
 	  }
       }
+  }
+
+  function loadJson (filename, json) {
+      // TODO: better error handling, instead of just letting the errors bubble up
+      const data = JSON.parse(json);
+      let dictionary = { name: filename };
+
+      // the total number of strokes across all definitions, not excluding
+      // duplicates. this will determine the length of our final stroke array.
+      let total_num_strokes = 0;
+      let num_entries = 0;
+      for (const [strokes_text, translation] of Object.entries(data)) {
+	  total_num_strokes += strokes_text.split("/").length;
+	  num_entries += 1;
+      }
+
+      dictionary.packed_strokes = new Uint32Array(total_num_strokes);
+      // we're adding the length of the array as the final index, since
+      // this simplifies access
+      dictionary.packed_stroke_indices = new Uint32Array(num_entries + 1);
+      dictionary.translations = [];
+      let packed_strokes_index = 0;
+      let max_delta = 0;
+
+      dictionary.by_stroke = new Map();
+
+      for (const [index, [strokes_text, translation]] of Object.entries(data).entries()) {
+
+	  dictionary.packed_stroke_indices[index] = packed_strokes_index;
+	  dictionary.translations.push(translation);
+	  
+	  for (const stroke_text of strokes_text.split("/")) {
+	      const stroke = textToStroke(stroke_text);
+	      
+	      dictionary.packed_strokes[packed_strokes_index] = stroke;
+	      packed_strokes_index += 1;
+
+	      const by_stroke_defs = dictionary.by_stroke.get(stroke);
+	      if (by_stroke_defs) {
+		  by_stroke_defs.push(index);
+	      }
+	      else {
+		  dictionary.by_stroke.set(stroke, []);
+	      }
+	  }
+	  const delta = packed_strokes_index - dictionary.packed_stroke_indices[index-0];
+	  if (delta > max_delta) {
+	      max_delta = delta;
+	      console.log(`delta: ${delta} (at ${strokes_text} ${translation}`);
+	  }
+      }
+
+      // packed_strokes_index should be equal to total_num_strokes here
+      dictionary.packed_stroke_indices[num_entries] = packed_strokes_index;
+
+      // provice a convenience access function
+      dictionary.getEntry = function (index) {
+	  const strokes = this.packed_strokes.slice(
+	      this.packed_stroke_indices[index],
+	      this.packed_stroke_indices[index+1]
+	  );
+
+	  // map doesn't work here, since it apparently returns another uint8array,
+	  // and not a normal array of strings
+	  const stroke_texts = [];
+	  for (const stroke of strokes) {
+	      stroke_texts.push(strokeToText(stroke));
+	  }
+	  return [stroke_texts.join("/"), this.translations[index]];
+      };
+
+      return dictionary;
   }
 
   function finishReadFile (filereader) {
       let data;
       try {
-          data = JSON.parse(filereader.result);
+	  dictionary = loadJson(files[0], filereader.result);
       } catch (error) {
           status = "error";
-          errormsg = "Sorry, we can't read the file that you uploaded. Are you sure that it's an actual json dictionary? (" + e.name + ": " + e.message + ")";
+          errormsg = "Sorry, we can't read the file that you uploaded. Are you sure that it's an actual json dictionary? (" + error.name + ": " + error.message + ")";
           return;
       }
-      dictionary = {name: files[0].name, data: Object.entries(data)};
 
-      dictionary.by_stroke = {};
-      for (const [index, [strokes, translation]] of dictionary.data.entries()) {
-	  for (const stroke_text of strokes.split("/")) {
-
-	      const stroke = textToStroke(stroke_text);
-
-	      if (dictionary.by_stroke.hasOwnProperty(stroke)) {
-		  dictionary.by_stroke[stroke].push(index);
-	      }
-	      else {
-		  dictionary.by_stroke[stroke] = [index];
-	      }
-	  }
-      }
-
-      // TODO: figure out storage format handling
-      //window.localStorage.setItem("dictionary", JSON.stringify(dictionary));
+      window.localStorage.setItem("dictionary", filereader.result);
+      window.localStorage.setItem("dictionary-name", files[0]);
 
       status = "loaded";
       signalDone();

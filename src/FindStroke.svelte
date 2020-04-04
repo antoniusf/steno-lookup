@@ -39,9 +39,9 @@
     }
 
     function doQuery() {
-	const indices = dictionary.by_stroke[stroke];
+	const indices = dictionary.by_stroke.get(stroke);
 	if (indices) {
-	    results = indices.map((index) => dictionary.data[index]);
+	    results = indices.map((index) => dictionary.getEntry(index));
 	} else {
 	    results = [];
 	}
