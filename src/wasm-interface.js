@@ -1,3 +1,5 @@
+let text_decoder = new TextDecoder("utf-8");
+
 export async function loadWasm (url) {
 
     // TODO: export memory from wasm instead? initially I thought maybe this way I could initialize it,
@@ -8,8 +10,18 @@ export async function loadWasm (url) {
     // alternative (normal instantiate from fetch.arrayBuffer()) doesn't work on firefox for android
     // since I'm using the latter but not the former, I'm going to keep it like this for now,
     // but this'll definitely have to be fixed. ugh.
-    let memory = new WebAssembly.Memory({ initial: 16 });
-    let result = await WebAssembly.instantiateStreaming(fetch(url), { env: { memory: memory }});
+
+    let memory = new WebAssembly.Memory({ initial: 17 });
+
+    function logErr (offset, length) {
+	const buffer = new Uint8Array(memory.buffer, offset, length);
+	console.log("WebAssembly module panicked with '" + text_decoder.decode(buffer) + "'");
+    }
+
+
+    const start = performance.now();
+    let result = await WebAssembly.instantiateStreaming(fetch(url), { env: { memory: memory, logErr: logErr }});
+    console.log(`loading wasm took ${performance.now() - start}ms`);
     return { memory: memory, instance: result.instance };
 }
 
