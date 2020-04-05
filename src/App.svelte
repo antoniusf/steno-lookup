@@ -3,6 +3,9 @@
     import Lookup from './Lookup.svelte';
     import FindStroke from './FindStroke.svelte';
 
+    import { testWasm } from './wasm-interface.js';
+
+    testWasm().catch((error) => console.log("uh-oh, there was a problem with the wasm! " + error));
 
     let serviceworker_version = "(unknown)";
 
