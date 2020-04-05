@@ -1,5 +1,13 @@
 export async function loadWasm (url) {
 
+    // TODO: export memory from wasm instead? initially I thought maybe this way I could initialize it,
+    // but I think I can do that one way or the other? And right now, I have to do this weird thing
+    // with getting the initial size right :/
+    //
+    // TODO 2: instantiateStreaming doesn't work on Safari, which is really annoying, because the
+    // alternative (normal instantiate from fetch.arrayBuffer()) doesn't work on firefox for android
+    // since I'm using the latter but not the former, I'm going to keep it like this for now,
+    // but this'll definitely have to be fixed. ugh.
     let memory = new WebAssembly.Memory({ initial: 16 });
     let result = await WebAssembly.instantiateStreaming(fetch(url), { env: { memory: memory }});
     return { memory: memory, instance: result.instance };
