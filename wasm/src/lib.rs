@@ -56,26 +56,56 @@ pub unsafe extern fn load_json(offset: u32, length: u32) -> u32{
     // keys: (strokes) packed u32s, one for each stroke. first stroke of each def is marked on the msb,
     //        no explicit length info necessary.
 
+    // so, here's the problem.
+    // since we work in-place, the new format must be guaranteed to be smaller
+    // than the old one. on first glance, this is easy: the json format includes
+    // a lot of extra characters, and most strokes get a lot shorter when we store
+    // them in the binary format. however, the binary stroke format needs a constant
+    // 4 bytes per stroke, but in json, a single-key stroke only needs 2 (the key,
+    // and the following other character ('"' or '/'). in most cases, this is not a
+    // problem because (a) we do have some extra characters in each line and (b)
+    // there are likely other strokes that will become shorter and thus make space
+    // for these. however, at the very beginning of a file, other strokes may not
+    // have had the chance to create this extra space and we may not be able to
+    // expand the stroke.
+    //
+    // to handle this, we use two passes: the first pass will only parse strokes that fit,
+    // and mark unexpanded strokes with a special marker, while also keeping track of how
+    // many extra bytes are needed. then, at the end, we do a second pass, this time going
+    // from back to front, moving everything back by this number of bytes. when we encounter
+    // an unexpanded stroke, we expand it into the extra space and decrease the number of
+    // bytes that are still free.
+    //
+    // to make this second back-to-front pass possible, we have to store data the wrong way
+    // around: strings have to be length-suffixed, not prefixed, and the special marker has
+    // to come *after* the unparsed data, not before. strokes don't have to be stored differently,
+    // since the first-stroke-marker works in reverse as well.
+    let mut extra_bytes_needed = 0;
+
     // TODO: make this a struct with impls, so we can stop passing all these values around?
     skip_whitespace(buffer, &mut read_pos);
     expect_char(buffer, &mut read_pos, b'{');
     // INVARIANT: read_pos >= write_pos + 1
     while true {
-        // INVARIANT: read_pos >= write_pos + 1
-        // NOTE: check that loop exit maintains this too!
+        // INVARIANT: read_pos >= write_pos + 1 (dominated by loop precondition)
         skip_whitespace(buffer, &mut read_pos);
         expect_char(buffer, &mut read_pos, b'"');
         // INVARIANT: read_pos >= write_pos + 2
         
         // read the strokes
-        let mut is_first_stroke = (1 << 7);
+        let mut is_first_stroke = (1 << 31);
         while true {
-            // INVARIANT: read_pos >= write_pos + 1 (dominated by loop end condition)
+            // INVARIANT: read_pos >= write_pos (dominated by loop end condition)
 
-            // stroke goes into the three higher bytes. we're writing this out in little
-            // endian, and we need the info byte to go first.
-            let stroke = (parse_stroke_fast(buffer, &mut read_pos) << 8) | is_first_stroke;
+            let stroke = parse_stroke_fast(buffer, &mut read_pos) | is_first_stroke;
             is_first_stroke = 0;
+
+            // read this now so we have a bit more space for writing
+            // (this will come in handy later)
+            let end_char = buffer[read_pos];
+            read_pos += 1;
+
+            // INVARIANT: read_pos >= write_pos + 1
 
             // we have to write 4 bytes, check if there's enough space
             if (write_pos + 4 <= read_pos) {
@@ -92,38 +122,203 @@ pub unsafe extern fn load_json(offset: u32, length: u32) -> u32{
             else {
                 // uh-oh, there's not enough space
                 // INVARIANT: read_pos >= write_pos + 1
+                extra_bytes_needed += 4 - (read_pos - write_pos);
 
-                // mark the following as unparsed. 
-                // if a normal stroke started here, this would be the info byte
+                // this is safe as u8, (a) because strokes shouldn't
+                // be longer than 256 bytes anyways and (b) if the stroke
+                // was this long, we'd have no problem fitting in the parsed
+                // version. (whatever the parser did with all those extra bytes
+                // we don't care)
+                let unparsed_length: u8 = 0;
+
+                // copy the next stroke unparsed
+                while true {
+                    // INVARIANT: read_pos >= write_pos + 1
+                    let byte = buffer[read_pos];
+                    read_pos += 1;
+                    // INVARIANT: read_pos >= write_pos + 2
+                    if (byte == b'"' || byte == b'/') {
+                        break;
+                    }
+                    buffer[write_pos] = byte;
+                    write_pos += 1;
+                    // INVARIANT: read_pos >= write_pos + 1
+                    unparsed_length += 1;
+                }
+                // INVARIANT: read_pos >= write_pos + 2
+
+                // we also have to store the length of the unparsed data,
+                // so that the 2nd pass knows how much to read
+                // also, I'm going to abuse the msb of this to store
+                // if this was the first stroke
+                buffer[write_pos] = unparsed_length | ((stroke >> 31) << 7) as u8;
+                write_pos += 1;
+                // INVARIANT: read_pos >= write_pos + 1
+
+                // mark the unparsed stroke
+                // if a normal stroke ended here, this would be the info byte
                 // which would either be 0 or (1 << 7). So this way, we can distinguish.
-                // also, the 0xFF byte is neither part of ASCII, nor of utf-8, so this
-                // is really the only place it should appear in the final document, except
-                // inside another stroke.
-                buffer[write_pos] = stroke & 0xFF;
+                buffer[write_pos] = 0xFF;
                 write_pos += 1;
                 // INVARIANT: read_pos >= write_pos
-
-                // copy the rest of the stroke verbatim
-                while true {
-                    byte = buffer[read_pos];
-                }
             }
 
             // INVARIANT: read_pos >= write_pos
 
-            if buffer[read_pos] == b'"' {
+            if end_char == b'"' {
                 // stop reading strokes
-                read_pos += 1;
-                // INVARIANT: read_pos >= write_pos + 1
+                // INVARIANT: read_pos >= write_pos
                 break;
             }
 
             // otherwise, we'll get another stroke
-            expect_char(buffer, &mut read_pos, b'/');
-            // INVARIANT: read_pos >= write_pos + 1
+            // TODO: check?: end_char should be '/'
+            assert!(byte == b'/');
+            // INVARIANT: read_pos >= write_pos
+        }
+        // INVARIANT: read_pos >= write_pos
+        skip_whitespace(buffer, &mut read_pos);
+        expect_char(buffer, &mut read_pos, b':');
+        // INVARIANT: read_pos >= write_pos + 1
+        skip_whitespace(buffer, &mut read_pos);
+        expect_char(buffer, &mut read_pos, b'"');
+        // INVARIANT: read_pos >= write_pos + 2
+
+        // copy string
+        let mut escape_next = false;
+        let mut length: u16 = 0;
+        while true {
+            // INVARIANT: read_pos >= write_pos + 2
+            let byte = buffer[read_pos];
+            read_pos += 1;
+            // INVARIANT: read_pos >= write_pos + 3
+
+            if (!escape_next) {
+                if (byte == b'"') {
+                    break;
+                }
+                else if (byte == b'\\') {
+                    escape_next = true;
+                }
+                // no, we're not reading other escapes
+            }
+            else {
+                escape_next = false;
+            }
+
+            buffer[write_pos] = byte;
+            write_pos += 1;
+            // INVARIANT: read_pos >= write_pos + 2
+            length += 1;
+        }
+        // INVARIANT: read_pos >= write_pos + 3
+        buffer[write_pos] = length & 0xFF;
+        buffer[write_pos + 1] = (length >> 8) & 0xFF;
+        write_pos += 2;
+        // INVARIANT: read_pos >= write_pos + 1
+
+        // string copied!
+        skip_whitespace(buffer, &mut read_pos);
+        let byte = buffer[read_pos];
+        read_pos += 1;
+        // INVARIANT: read_pos >= write_pos + 2
+
+        if byte == b'}' {
+            // we're done!! \o/
+            break;
+        }
+        // otherwise, byte should be == b','
+        assert!(byte == b',');
+        // INVARIANT: read_pos >= write_pos + 2
+    }
+
+    // first pass done, yay!
+    // second pass: read from back to front, making space for unparsed strokes,
+    // rewriting strings to length-prefix form since that's what we need in the end
+
+    if (read_pos - write_pos) > extra_bytes {
+        // we'd have to allocate more, I don't want to do that yet
+        // TODO: log error (doesn't work via panic since we can't format args)
+        panic!("the dictionary is very weird and would be longer in binary than in json. i cant handle this, sorry");
+    }
+
+    // write_pos is on the byte one after the last one we wrote.
+    read_pos = write_pos - 1;
+    write_pos = read_pos + extra_bytes_needed;
+    while true {
+        // read string length
+        let length = buffer[read_pos - 1] | (buffer[read_pos] << 8);
+        read_pos -= 2;
+
+        // copy string
+        for i in 0..length {
+            buffer[write_pos] = buffer[read_pos];
+            write_pos -= 1;
+            read_pos -= 1;
         }
 
-        // INVARIANT: read_pos >= write_pos + 1
+        // write string length
+        buffer[write_pos] = length >> 8;
+        buffer[write_pos-1] = length & 0xFF;
+        write_pos -= 2;
+
+        // copy strokes
+        while true {
+            // do we have to parse this stroke?
+            if buffer[read_pos] == 0xFF {
+                read_pos -= 1;
+                let length = buffer[read_pos] & 127;
+                let is_first_stroke = buffer[read_pos] >> 7;
+                read_pos -= 1;
+                // mark the end of the stroke in a way that parse_stroke can understand
+                read_pos += 1;
+                // read_pos is now on the first byte after the stroke
+                buffer[read_pos] = b'"';
+                read_pos -= length;
+
+                let stroke = parse_stroke_fast(buffer, &mut read_pos) | (is_first_stroke << 31);
+                // read_pos is now on the first byte after the stroke, *again*.
+                read_pos -= length;
+                // read_pos is now on the first byte *of* the stroke
+                read_pos -= 1;
+                // read_pos is now on the byte *before* the stroke, so we can continue
+                // reading normally.
+
+                buffer[write_pos] = stroke >> 24;
+                buffer[write_pos-1] = (stroke >> 16) & 0xFF;
+                buffer[write_pos-2] = (stroke >> 8) & 0xFF;
+                buffer[write_pos-3] = stroke & 0xFF;
+                write_pos -= 4;
+
+                // note that we're writing more bytes than we're reading here.
+                // if extra_bytes_needed was computed correctly, we should
+                // eventually be in a situation where the write pointer
+                // has caught up to the read pointer.
+
+                if (is_first_stroke != 0) {
+                    // we're done with the strokes!
+                    break;
+                }
+            }
+            else {
+                // we can just copy this stroke normally
+                buffer[write_pos] = buffer[read_pos];
+                buffer[write_pos-1] = buffer[read_pos-1];
+                buffer[write_pos-2] = buffer[read_pos-2];
+                buffer[write_pos-3] = buffer[read_pos-3];
+
+                // since we stored this little-endian, the msb of the stroke
+                // is the msb of the last byte.
+                let is_first_stroke = buffer[read_pos] >> 7;
+                read_pos -= 4;
+                write_pos -= 4;
+
+                if (is_first_stroke != 0) {
+                    break;
+                }
+            }
+        }
+    }
 }
 
 fn skip_whitespace(buffer: &[u8], pos: &mut usize) {
