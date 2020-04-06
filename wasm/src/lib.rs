@@ -28,11 +28,126 @@ pub unsafe extern fn load_json(offset: u32, length: u32) -> u32{
         offset as *const u8,
         length as usize
     );
-    let mut counter = 0;
-    for byte in string_data {
-        counter += *byte as u32;
+
+    // here's the plan: we are going to read the file in, piece-by-piece,
+    // convert it to our binary format, and then write that back as we go,
+    // so we never have to allocate more memory than the initial dictionarys size.
+    // this is kind of important, since wasm can't give memory back.
+    //
+    // on a normal (non-pathologic) dictionary, the binaray format should save
+    // a lot of space, so we'll have some left over at the end.
+    //
+    // this is not a general json parser. it is very specifically made for reading
+    // plovers json dictionaries, which consist of a single object with string keys
+    // and string values. furthermore, the keys should be pure ascii, so we don't have
+    // to decode them. values should be utf-8, so we can just copy them over. (we don't
+    // have to parse those, unlike the keys)
+
+    let mut read_pos = 0;
+    let mut write_pos = 0;
+
+    // INVARIANT: read_pos >= write_pos
+
+    // data format:
+    // values: length-prefixed strings (u16), so we can iterate efficiently.
+    //         u16 should be sufficient, no one is going to have a translation longer than 65.000 characters.
+    //         (the longest one in stan's dictionary is a reporter's certificate, which is really long
+    //          and has 478 chars. i think its fair to say that a u16 is enough.
+    // keys: (strokes) packed u32s, one for each stroke. first stroke of each def is marked on the msb,
+    //        no explicit length info necessary.
+
+    // TODO: make this a struct with impls, so we can stop passing all these values around?
+    skip_whitespace(buffer, &mut read_pos);
+    expect_char(buffer, &mut read_pos, b'{');
+    // INVARIANT: read_pos >= write_pos + 1
+    while true {
+        // INVARIANT: read_pos >= write_pos + 1
+        // NOTE: check that loop exit maintains this too!
+        skip_whitespace(buffer, &mut read_pos);
+        expect_char(buffer, &mut read_pos, b'"');
+        // INVARIANT: read_pos >= write_pos + 2
+        
+        // read the strokes
+        let mut is_first_stroke = (1 << 7);
+        while true {
+            // INVARIANT: read_pos >= write_pos + 1 (dominated by loop end condition)
+
+            // stroke goes into the three higher bytes. we're writing this out in little
+            // endian, and we need the info byte to go first.
+            let stroke = (parse_stroke_fast(buffer, &mut read_pos) << 8) | is_first_stroke;
+            is_first_stroke = 0;
+
+            // we have to write 4 bytes, check if there's enough space
+            if (write_pos + 4 <= read_pos) {
+                // we're just doing this manually, alignment isn't guaranteed anyways
+                // this'll be fixed when we reformat everything later
+                // little endian, write the highest byte last
+                buffer[write_pos] = stroke & 0xFF;
+                buffer[write_pos+1] = (stroke >> 8) & 0xFF;
+                buffer[write_pos+2] = (stroke >> 16) & 0xFF;
+                buffer[write_pos+3] = (stroke >> 24) & 0xFF;
+                write_pos += 4;
+                // INVARIANT: read_pos >= write_pos
+            }
+            else {
+                // uh-oh, there's not enough space
+                // INVARIANT: read_pos >= write_pos + 1
+
+                // mark the following as unparsed. 
+                // if a normal stroke started here, this would be the info byte
+                // which would either be 0 or (1 << 7). So this way, we can distinguish.
+                // also, the 0xFF byte is neither part of ASCII, nor of utf-8, so this
+                // is really the only place it should appear in the final document, except
+                // inside another stroke.
+                buffer[write_pos] = stroke & 0xFF;
+                write_pos += 1;
+                // INVARIANT: read_pos >= write_pos
+
+                // copy the rest of the stroke verbatim
+                while true {
+                    byte = buffer[read_pos];
+                }
+            }
+
+            // INVARIANT: read_pos >= write_pos
+
+            if buffer[read_pos] == b'"' {
+                // stop reading strokes
+                read_pos += 1;
+                // INVARIANT: read_pos >= write_pos + 1
+                break;
+            }
+
+            // otherwise, we'll get another stroke
+            expect_char(buffer, &mut read_pos, b'/');
+            // INVARIANT: read_pos >= write_pos + 1
+        }
+
+        // INVARIANT: read_pos >= write_pos + 1
+}
+
+fn skip_whitespace(buffer: &[u8], pos: &mut usize) {
+    while true {
+        let byte = buffer[*pos];
+        if (byte != b' '
+            & byte != b'\t'
+            & byte != b'\r'
+            & byte != b'\n'
+        ) {
+            // character is non-whitespace. don't advance position,
+            // return and let the caller continue.
+            return;
+        }
+        *pos += 1;
     }
-    return counter;
+}
+
+fn expect_char(buffer: &[u8], pos: &mut usize, expected: u8) {
+    let byte = buffer[*pos];
+    if (byte == expected) {
+        *pos += 1
+    }
+    // TODO: error handling – what happens when this is not the right byte?
 }
 
 // structure of this table:
