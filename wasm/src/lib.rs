@@ -81,6 +81,10 @@ pub unsafe extern fn load_json(offset: u32, length: u32) -> u32{
     // to come *after* the unparsed data, not before. strokes don't have to be stored differently,
     // since the first-stroke-marker works in reverse as well.
     let mut extra_bytes_needed = 0;
+    
+    // we're also computing the total length of the string array while we're at it
+    // (we'll need this in pass 2)
+    let mut string_array_length = 0;
 
     // TODO: make this a struct with impls, so we can stop passing all these values around?
     skip_whitespace(buffer, &mut read_pos);
@@ -217,6 +221,8 @@ pub unsafe extern fn load_json(offset: u32, length: u32) -> u32{
         write_pos += 2;
         // INVARIANT: read_pos >= write_pos + 1
 
+        string_array_length += length + 2;
+
         // string copied!
         skip_whitespace(buffer, &mut read_pos);
         let byte = buffer[read_pos];
@@ -236,7 +242,21 @@ pub unsafe extern fn load_json(offset: u32, length: u32) -> u32{
     // second pass: read from back to front, making space for unparsed strokes,
     // rewriting strings to length-prefix form since that's what we need in the end
 
-    if (read_pos - write_pos) > extra_bytes {
+    // we're also using the second pass to set a mark where the packed stroke array
+    // well begin. (this is why we computed string_array_length in the first pass.)
+    // we need this since we'll have to start writing to both of these at the same time,
+    // and again we actually have to parse the data so we need framing info.
+    // this will contain the start of the first entry *after* the end of the string array.
+    // for simplicity, we're going to start the stroke array there. it shouldn't waste much space,
+    // since entries are usually short.
+    let mut stroke_array_start = 0;
+
+    // I am entering this manually, since core::mem::align_of only gives the
+    // minimum, not the preferred alignment
+    let u32_align = 4;
+
+    // leave a bit of extra space for aligning the stroke array
+    if (read_pos - write_pos) > (extra_bytes + u32_align - 1) {
         // we'd have to allocate more, I don't want to do that yet
         // TODO: log error (doesn't work via panic since we can't format args)
         panic!("the dictionary is very weird and would be longer in binary than in json. i cant handle this, sorry");
@@ -319,6 +339,13 @@ pub unsafe extern fn load_json(offset: u32, length: u32) -> u32{
             }
         }
     }
+
+    // last step: reorganize everything into two separate arrays, so we can
+    // iterate efficiently
+
+    // compute start of stroke array
+    let offset = buffer.as_ptr().wrapping_offset(string_array_length).align_offset(u32_offset);
+    let stroke_array_start = string_array_length + offset;
 }
 
 fn skip_whitespace(buffer: &[u8], pos: &mut usize) {
