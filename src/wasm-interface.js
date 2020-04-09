@@ -30,19 +30,27 @@ export async function loadWasm (url) {
     return result.instance;
 }
 
-export async function testWasm () {
+export async function loadJson (json) {
 
+    const wasm_page_size = 65536;
+    
     const wasm = await loadWasm("/helpers.wasm");
-    // grow by 1 page
-    const num_base_pages = wasm.exports.memory.grow(1);
+    const encoder = new TextEncoder();
+    const data = encoder.encode(json);
+
+    const pages_needed = Math.ceil(data.length / wasm_page_size);
+
+    const num_base_pages = wasm.exports.memory.grow(pages_needed);
     const base_offset = num_base_pages * 65536;
     console.log("number of base pages: " + num_base_pages);
 
-    let array = new Uint8Array(wasm.exports.memory.buffer, base_offset, 10);
+    const memoryarray = new Uint8Array(wasm.exports.memory.buffer);
 
-    for (let i = 0; i < 10; i++) {
-	array[i] = i+1;
-    }
+    memoryarray.subarray(base_offset, base_offset + data.length).set(data);
 
-    console.log("wasm result: " + wasm.exports.load_json(base_offset, 10));
+    console.log("before wasm");
+    const start = performance.now()
+    wasm.exports.load_json(base_offset, data.length);
+    console.log(`after wasm (took ${performance.now() - start}ms)`);
+    console.log(memoryarray.subarray(base_offset, base_offset + 20));
 }
