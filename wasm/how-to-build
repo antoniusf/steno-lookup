@@ -1,0 +1,8 @@
+I'm not using wasm-bindgen (and hence wasm-pack), since afaict it does an allocation every time we pass in a string. I need more fine-grained control than this, and I also don't really benefit from wasm-bindgen's abstraction layer, since the api is pretty simple and doesn't need to call any js functions. this means that the build works a little bit differently:
+
+1. cargo build --release
+2. ./post-build.sh
+
+post-build does 2 things:
+1. run wasm-strip on the binary, since i cant get rustc to omit the debug sections
+2. copy the file into the folder structure of the web app, so it can be loaded from the server

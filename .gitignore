@@ -2,6 +2,7 @@
 /public/build/
 /public/serviceworker-release.js
 /public/serviceworker-release.js.map
+/public/helpers.wasm
 
 .DS_Store
 
