@@ -74,6 +74,14 @@ export function strokeToText(stroke) {
     return text;
 }
 
+export function strokesToText(strokes) {
+    let texts = [];
+    for (const stroke of strokes) {
+	texts.push(strokeToText(stroke));
+    }
+    return texts.join("/");
+}
+
 // TODO: standard replacements N- => TPH- etc.
 export function textToStroke(text) {
     let next_consonant_is_right_bank = false;

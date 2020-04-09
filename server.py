@@ -19,6 +19,7 @@ versioned_files = [
     "./icon.png",
     "./build/bundle.css",
     "./build/bundle.js",
+    "./helpers.wasm",
     "./load-icon.svg",
     "./abc-icon.svg",
     "./STK-icon.svg"
@@ -129,7 +130,10 @@ class Handler(BaseHTTPRequestHandler):
         if os.path.isfile(path):
             content_type = mimetypes.guess_type(path)[0]
             if content_type is None:
-                content_type = "text/plain"
+                if path.endswith(".wasm"):
+                    content_type = "application/wasm"
+                else:
+                    content_type = "text/plain"
 
             with open(path, "rb") as f:
                 if version:

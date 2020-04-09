@@ -10,6 +10,7 @@ self.addEventListener('install', (event) => {
 		'./icon.png', // in case people decide they want to "add to homescreen" while offline
 		'./build/bundle.css',
 		'./build/bundle.js',
+		'./helpers.wasm',
 		'./load-icon.svg',
 		'./abc-icon.svg',
 		'./STK-icon.svg'

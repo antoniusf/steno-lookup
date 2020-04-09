@@ -1,13 +1,13 @@
 <script>
     import ResultsTable from './ResultsTable.svelte';
-    import { strokeToText } from './util.js';
+    import { strokeToText, strokesToText } from './util.js';
     
     export let dictionary;
     let query = "";
     let query_result;
     let queryRunnerState = {
 	running: false, // if running is true, there is still a doQueryInChunks call in the message queue
-	chunk: 0,
+	iterator: null,
 	query: null
     };
     const itemsPerChunk = 10000;
@@ -51,8 +51,10 @@
     // onMessage handler on the window, and use postMessage to enqueue
     // it. So that's what I'm doing.
     function startQuery(query) {
-	queryRunnerState.chunk = 0;
-	queryRunnerState.query = query;
+	queryRunnerState.iterator = dictionary.entries();
+	// encode the query since strings are stored as utf-8
+	const textencoder = new TextEncoder();
+	queryRunnerState.query = textencoder.encode(query);
 	query_result = [];
 
 	if (queryRunnerState.running === false) {
@@ -73,33 +75,61 @@
 	    return;
 	}
 
+	const textdecoder = new TextDecoder();
+	const query = queryRunnerState.query;
+
 	// console.log("query \"" + queryRunnerState.query + "\", chunk " + queryRunnerState.chunk);
-	let startIndex = queryRunnerState.chunk * itemsPerChunk;
-	let endIndex = startIndex + itemsPerChunk;
-	endIndex = Math.min(endIndex, dictionary.translations.length);
-	
-	for (let i=startIndex; i<endIndex; i++) {
-	    let translation = dictionary.translations[i];
-	    if (translation == queryRunnerState.query) {
-		query_result.push(dictionary.getEntry(i));
+	let items_done = 0;
+
+	let result = queryRunnerState.iterator.next()
+	while (!result.done) {
+	    const [strokes, translation] = result.value;
+	    //console.log(translation);
+	    //let test = textdecoder.decode(translation);
+	    //if (test == "adept") {
+	    //	console.log("hi!");
+	    //	console.log(translation);
+	    //	console.log(query);
+	    //}
+
+	    // I cannot believe that javascript can't compare two arrays
+	    if (query.length == translation.length) {
+
+		let equal = true;
+		for (let idx = 0; idx < query.length; idx++) {
+		    if (query[idx] != translation[idx]) {
+			equal = false;
+			break;
+		    }
+		}
+
+		if (equal) {
+		    query_result.push([strokesToText(strokes), textdecoder.decode(translation)]);
+		}
 	    }
+
+	    items_done += 1;
+	    if (items_done >= itemsPerChunk) {
+		// we have to stop for now.
+		// re-enqueue this function at the back of the message queue.
+		// if there were input events in the meantime, they will get handled first.
+		window.postMessage("wakeQueryRunner", "*");
+		return;
+	    }
+	    result = queryRunnerState.iterator.next();
 	}
 
-	queryRunnerState.chunk += 1;
+	// we're done!
+	console.log("done!");
 
-	if (endIndex === dictionary.translations.length) {
-	    queryRunnerState.running = false;
+	queryRunnerState.running = false;
 
-	    // re-assign query_result so svelte updates the view
-	    // we're only doing this now to save unnecessary updates while loading.
-	    // though we should consider if displaying the data as it streams in might be desirable.
-	    query_result = query_result;
-	    console.log("Query took " + (performance.now() - startQueryTime) + "ms.");
-	} else {
-	    // re-enqueue this function at the back of the message queue.
-	    // if there were input events in the meantime, they will get handled first.
-	    window.postMessage("wakeQueryRunner", "*");
-	}
+	// re-assign query_result so svelte updates the view
+	// we're only doing this now to save unnecessary updates while loading.
+	// though we should consider if displaying the data as it streams in might be desirable.
+	query_result.push(["TEFT", "this is the wasm version running!"]);
+	query_result = query_result;
+	console.log("Query took " + (performance.now() - startQueryTime) + "ms.");
     }
 
     // function doQuery(query) {
