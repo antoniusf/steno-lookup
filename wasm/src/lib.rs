@@ -1,17 +1,33 @@
 #![no_std]
+//#![cfg_attr(not(test), no_std)]
 
 use core::convert::TryFrom;
 
+#[cfg(not(test))]
 #[link(wasm_import_module = "env")]
 extern { fn logErr(offset: u32, length: u32); }
 
+#[cfg(not(test))]
 fn log_err_internal(string: &[u8]) {
     unsafe {
         logErr(string.as_ptr() as u32, string.len() as u32);
     }
 }
 
-#[cfg(all(target_arch = "wasm32", not(test)))]
+#[cfg(test)]
+fn log_err_internal(string: &[u8]) {
+    println!("{}", std::str::from_utf8(string).unwrap_or("<couldn't decode utf-8"));
+}
+
+// workaround for https://github.com/bytecodealliance/wasmtime/issues/1435
+#[cfg(test)]
+extern crate wee_alloc;
+
+#[cfg(test)]
+#[global_allocator]
+static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+
+#[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     if let Some(string) = info.payload().downcast_ref::<&str>() {
@@ -89,6 +105,8 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
     
     // INVARIANT: read_pos >= write_pos + 1
 
+    log_err_internal(b"debug: before first pass");
+
     loop {
 
         // read key
@@ -117,6 +135,8 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
         }
         expect_char(buffer, &mut read_pos, b',')?;
     }
+
+    log_err_internal(b"debug: after first pass, allocating memory");
 
     // first pass is done.
     // second pass:
@@ -181,6 +201,8 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
         // whew
     }
 
+    log_err_internal(b"debug: before second pass");
+
     // second pass!
     // this is the end of the buffer, i.e. the index of the byte
     // one after the last one we wrote.
@@ -196,13 +218,13 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
         let mut is_first_stroke = 1 << 31;
         loop {
 
-            let stroke = parse_stroke_fast(buffer, &mut read_pos) | is_first_stroke;
+            let stroke = parse_stroke_fast(buffer, &mut read_pos)? | is_first_stroke;
             is_first_stroke = 0;
 
-            stroke_array[stroke_write_pos] = stroke;
+            *stroke_array.get_mut(stroke_write_pos).ok_or(b"Error occured while writing stroke".as_ref())? = stroke;
             stroke_write_pos += 1;
 
-            if buffer[read_pos] == b'"' {
+            if *buffer.get(read_pos).ok_or(b"Error occured while reading stroke".as_ref())? == b'"' {
                 // stop reading strokes
                 read_pos += 1;
                 break;
@@ -221,14 +243,14 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
         string_write_pos += 2;
         
         loop {
-            let byte = buffer[read_pos];
+            let byte = *buffer.get(read_pos).ok_or(b"Error occured while reading string".as_ref())?;
             read_pos += 1;
 
             if byte == 0 {
                 break;
             }
 
-            buffer[string_write_pos] = byte;
+            *buffer.get_mut(string_write_pos).ok_or(b"Error occured while writing string".as_ref())? = byte;
             string_write_pos += 1;
             length += 1;
         }
@@ -236,9 +258,11 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
         let length_u16 = u16::try_from(length).or(Err("Parser error: a string in your dictionary is longer than 64kB, which is very big and kind of surprising. I am sorry, but we cannot handle this right now, and probably never will.")).unwrap();
 
         // write the length in little endian
-        buffer[length_field] = (length_u16 & 0xFF) as u8;
-        buffer[length_field+1] = (length_u16 >> 8) as u8;
+        *buffer.get_mut(length_field).ok_or(b"Error occured while writing length 1".as_ref())? = (length_u16 & 0xFF) as u8;
+        *buffer.get_mut(length_field+1).ok_or(b"Error occured while writing length 1".as_ref())? = (length_u16 >> 8) as u8;
     }
+
+    log_err_internal(b"debug: after second pass");
 
     // sanity check
     assert_eq!(string_write_pos, string_array_length);
@@ -554,12 +578,12 @@ static PARSE_STROKE_TABLE: [u32; 128] = [
 
 // pos is a pointer, so the calling code can pick up
 // where we left off
-fn parse_stroke_fast(buffer: &[u8], pos: &mut usize) -> u32 {
+fn parse_stroke_fast(buffer: &[u8], pos: &mut usize) -> Result<u32, &'static [u8]> {
 
     let mut state = 0;
     let mut stroke = 0;
     while (state & (1 << 7)) == 0 {
-        let byte = buffer[*pos];
+        let byte = *buffer.get(*pos).ok_or(b"Error while reading stroke (in parse_stroke_fast)".as_ref())?;
         *pos += 1;
 
         // first, cast up to u32, since we'll have to go up anyways.
@@ -578,25 +602,38 @@ fn parse_stroke_fast(buffer: &[u8], pos: &mut usize) -> u32 {
     // move back before the stop symbol, so the calling code
     // can handle that.
     *pos -= 1;
-    return stroke;
+    return Ok(stroke);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::prelude::*;
     
+    //#[test]
+    //fn test_parse_stroke() {
+    //    // TODO: I've just precomputed these values and checked that they are correct.
+    //    // but there should be a better way.
+    //    let mut pos = 0;
+    //    assert_eq!(parse_stroke_fast(b"KPWHREPLGS/", &mut pos), 1476856);
+    //    pos = 0;
+    //    assert_eq!(parse_stroke_fast(b"K-FRBL/", &mut pos), 221192);
+    //    pos = 0;
+    //    assert_eq!(parse_stroke_fast(b"#AO/", &mut pos), 769);
+    //    pos = 0;
+    //    assert_eq!(parse_stroke_fast(b"50/", &mut pos), 769);
+    //    pos = 0;
+    //}
+
     #[test]
-    fn test_parse_stroke() {
-        // TODO: I've just precomputed these values and checked that they are correct.
-        // but there should be a better way.
-        let mut pos = 0;
-        assert_eq!(parse_stroke_fast(b"KPWHREPLGS/", &mut pos), 1476856);
-        pos = 0;
-        assert_eq!(parse_stroke_fast(b"K-FRBL/", &mut pos), 221192);
-        pos = 0;
-        assert_eq!(parse_stroke_fast(b"#AO/", &mut pos), 769);
-        pos = 0;
-        assert_eq!(parse_stroke_fast(b"50/", &mut pos), 769);
-        pos = 0;
+    fn test_parse_stanmain() -> std::io::Result<()> {
+        println!("Hello world!");
+        let mut file = std::fs::File::open("/home/antonius/stanmain.json").or_else(|err| {
+            println!("{:?}", err);
+            return Err(err);
+        })?;
+        //let mut data = Vec::new();
+        //file.read_to_end(&mut data).unwrap();
+        return Ok(());
     }
 }
