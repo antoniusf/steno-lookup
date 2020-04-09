@@ -7,7 +7,8 @@
     let query_result;
     let queryRunnerState = {
 	running: false, // if running is true, there is still a doQueryInChunks call in the message queue
-	iterator: null,
+	string_pos: 0,
+	stroke_pos: 0,
 	query: null
     };
     const itemsPerChunk = 10000;
@@ -51,7 +52,8 @@
     // onMessage handler on the window, and use postMessage to enqueue
     // it. So that's what I'm doing.
     function startQuery(query) {
-	queryRunnerState.iterator = dictionary.entries();
+	queryRunnerState.string_pos = 0;
+	queryRunnerState.stroke_pos = 0;
 	// encode the query since strings are stored as utf-8
 	const textencoder = new TextEncoder();
 	queryRunnerState.query = textencoder.encode(query);
@@ -77,13 +79,33 @@
 
 	const textdecoder = new TextDecoder();
 	const query = queryRunnerState.query;
+	// don't forget to write this back in the end!
+	let string_pos = queryRunnerState.string_pos;
+	let stroke_pos = queryRunnerState.stroke_pos;
 
-	// console.log("query \"" + queryRunnerState.query + "\", chunk " + queryRunnerState.chunk);
 	let items_done = 0;
 
-	let result = queryRunnerState.iterator.next()
-	while (!result.done) {
-	    const [strokes, translation] = result.value;
+	// console.log("query \"" + queryRunnerState.query + "\", chunk " + queryRunnerState.chunk);
+
+	while (string_pos < dictionary.strings.length) {
+
+	    let string_length = dictionary.strings[string_pos] + (dictionary.strings[string_pos+1] << 8);
+	    string_pos += 2;
+	    let translation = dictionary.strings.subarray(string_pos, string_pos + string_length);
+	    string_pos += string_length;
+
+	    let strokes = [];
+	    while (true) {
+		const stroke = dictionary.strokes[stroke_pos];
+		stroke_pos += 1;
+		strokes.push(stroke);
+		
+		if (stroke >> 31) {
+		    // last stroke marker
+		    break;
+		}
+	    }
+
 	    //console.log(translation);
 	    //let test = textdecoder.decode(translation);
 	    //if (test == "adept") {
@@ -111,12 +133,14 @@
 	    items_done += 1;
 	    if (items_done >= itemsPerChunk) {
 		// we have to stop for now.
+		// write string_pos back
+		queryRunnerState.string_pos = string_pos;
+		queryRunnerState.stroke_pos = stroke_pos;
 		// re-enqueue this function at the back of the message queue.
 		// if there were input events in the meantime, they will get handled first.
 		window.postMessage("wakeQueryRunner", "*");
 		return;
 	    }
-	    result = queryRunnerState.iterator.next();
 	}
 
 	// we're done!

@@ -215,23 +215,25 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
         
         // step 1:
         // read the strokes
-        let mut is_first_stroke = 1 << 31;
+        let is_last_stroke = 1 << 31;
         loop {
 
-            let stroke = parse_stroke_fast(buffer, &mut read_pos)? | is_first_stroke;
-            is_first_stroke = 0;
+            let mut stroke = parse_stroke_fast(buffer, &mut read_pos)?;
+
+            let end_byte = *buffer.get(read_pos).ok_or(b"Error occured while reading stroke".as_ref())?;
+            read_pos += 1;
+            
+            if end_byte == b'"' {
+                stroke |= is_last_stroke;
+            }
 
             *stroke_array.get_mut(stroke_write_pos).ok_or(b"Error occured while writing stroke".as_ref())? = stroke;
             stroke_write_pos += 1;
 
-            if *buffer.get(read_pos).ok_or(b"Error occured while reading stroke".as_ref())? == b'"' {
+            if end_byte == b'"' {
                 // stop reading strokes
-                read_pos += 1;
                 break;
             }
-
-            // otherwise, we'll get another stroke
-            read_pos += 1;
         }
 
         // step 2:
@@ -578,6 +580,7 @@ static PARSE_STROKE_TABLE: [u32; 128] = [
 
 // pos is a pointer, so the calling code can pick up
 // where we left off
+// TODO: what about zero-length strokes or other malformed input?
 fn parse_stroke_fast(buffer: &[u8], pos: &mut usize) -> Result<u32, &'static [u8]> {
 
     let mut state = 0;

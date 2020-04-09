@@ -26,7 +26,6 @@
         } else {
             // TODO: can this fail?
 	    dictionary = stored_dictionary;
-	    addDictionaryIterator(dictionary);
             status = "loaded";
             signalDone();
         }
@@ -116,44 +115,9 @@
       dictionary.name = files[0].name;
 
       await set("dictionary", dictionary);
-      addDictionaryIterator(dictionary);
 
       status = "loaded";
       signalDone();
-  }
-
-  function addDictionaryIterator (dictionary) {
-      dictionary.entries = function* () {
-	  let string_pos = 0;
-	  let stroke_pos = 0;
-
-	  while (string_pos < this.strings.length) {
-	      let string_length = this.strings[string_pos] + (this.strings[string_pos+1] << 8);
-	      string_pos += 2;
-	      let string = this.strings.subarray(string_pos, string_pos + string_length);
-	      string_pos += string_length;
-
-	      let strokes_start = stroke_pos;
-	      // we have at least one stroke
-	      stroke_pos += 1;
-
-	      while (true) {
-		  const stroke = this.strokes[stroke_pos];
-		  if ((stroke >> 31) || (stroke_pos >= this.strokes.length)){
-		      // this is the next definition, not ours
-		      // TODO: maybe switch to marking the last stroke instead?
-		      // seems easier to handle here.
-		      break;
-		  }
-		  stroke_pos += 1;
-	      }
-
-	      let strokes = this.strokes.subarray(strokes_start, stroke_pos);
-
-	      yield [strokes, string];
-	  }
-	  return;
-      };
   }
 
   async function removeDict (event) {
