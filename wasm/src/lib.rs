@@ -175,7 +175,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
 
         stroke_array = core::slice::from_raw_parts_mut(
             string_array_length_ptr.add(2),
-            string_array_length
+            stroke_array_length / 4
         );
 
         // whew
@@ -242,7 +242,26 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
 
     // sanity check
     assert_eq!(string_write_pos, string_array_length);
-    assert_eq!(stroke_write_pos, stroke_array_length*4);
+    log_err_internal(b"debug: in sanity check");
+
+    {
+        let mut a = *b"string array length:          / string write pos:         ";
+        let mut num = string_array_length;
+        let mut num2 = string_write_pos;
+        let mut idx = a.len();
+        while idx > a.len() - 8 {
+            idx -= 1;
+            a[idx] = (num2 % 10) as u8 + b'0';
+            a[idx-28] = (num % 10) as u8 + b'0';
+            num /= 10;
+            num2 /= 10;
+        }
+
+        log_err_internal(&a);
+    }
+    assert_eq!(stroke_write_pos*4, stroke_array_length);
+
+    log_err_internal(b"debug: done");
 
     return Ok(new_data_start);
 }
@@ -263,8 +282,8 @@ fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut us
 
     // I think it's simpler to just compute both and then
     // only return the one we need. It saves some ifs.
-    let mut final_size_guess_string = 0;
-    let mut final_size_guess_strokes = 0;
+    let mut final_size_guess_string = 2;
+    let mut final_size_guess_strokes = 4;
 
     expect_char(&buffer, read_pos, b'"')?;
     // INVARIANT: read_pos >= write_pos + 1
@@ -299,7 +318,7 @@ fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut us
                 if is_strokes {
                     // the stroke parser can't handle those, so we have to make sure
                     // they won't be in there.
-                    return Err(b"Parser error: escape sequence found in stroke definition")
+                    return Err(b"Parser error: escape sequence found in stroke definition");
                 }
                 escape_next = true;
             }
@@ -360,11 +379,16 @@ fn expect_char<'a>(buffer: &[u8], pos: &mut usize, expected: u8) -> Result<(), &
         else {
             // todo: maybe find a more elegant way to statically determine
             // the interpolation positions?
-            let message = b"Parser error: expected '$', but got '$'";
-            unsafe {
-                *(message[24] as *mut u8) = expected;
-                *(message[37] as *mut u8) = *byte;
-            }
+            let message = b"Parser error: expected '$', but got '$' (at char     )";
+            // copy this onto the stack (i think) so we can format it.
+            let mut formatted_message = *message;
+            formatted_message[24] = expected;
+            formatted_message[37] = *byte;
+            formatted_message[49] = (*pos/1000) as u8 + b'0';
+            formatted_message[50] = ((*pos/100) % 10) as u8 + b'0';
+            formatted_message[51] = ((*pos/10) % 10) as u8 + b'0';
+            formatted_message[52] = ((*pos) % 10) as u8 + b'0';
+            log_err_internal(&formatted_message);
             return Err(message);
         }
     }
