@@ -1,6 +1,7 @@
 <script>
     import ResultsTable from './ResultsTable.svelte';
     import { strokeToText, strokesToText } from './util.js';
+    import { doQuery } from './wasm-interface.js';
     
     export let dictionary;
     let query = "";
@@ -51,23 +52,25 @@
     // However, MDN also has the solution: Register your function as an
     // onMessage handler on the window, and use postMessage to enqueue
     // it. So that's what I'm doing.
-    function startQuery(query) {
-	queryRunnerState.string_pos = 0;
-	queryRunnerState.stroke_pos = 0;
-	// encode the query since strings are stored as utf-8
-	const textencoder = new TextEncoder();
-	queryRunnerState.query = textencoder.encode(query);
-	query_result = [];
+    async function startQuery(query) {
+	query_result = await doQuery(dictionary, query);
 
-	if (queryRunnerState.running === false) {
-	    // enqueue the query runner task
-	    // (if running was true, there would already be a task enqueued, which will just start again
-	    // now that we've reset it's state)
-	    window.postMessage("wakeQueryRunner", "*");
-            queryRunnerState.running = true;
-	}
+	//queryRunnerState.string_pos = 0;
+	//queryRunnerState.stroke_pos = 0;
+	//// encode the query since strings are stored as utf-8
+	//const textencoder = new TextEncoder();
+	//queryRunnerState.query = textencoder.encode(query);
+	//query_result = [];
 
-	startQueryTime = performance.now();
+	//if (queryRunnerState.running === false) {
+	//    // enqueue the query runner task
+	//    // (if running was true, there would already be a task enqueued, which will just start again
+	//    // now that we've reset it's state)
+	//    window.postMessage("wakeQueryRunner", "*");
+        //    queryRunnerState.running = true;
+	//}
+
+	//startQueryTime = performance.now();
     }
 
     function doQueryInChunks(event) {
@@ -175,4 +178,8 @@
 </style>
 
 <input type="text" bind:value={query}/>
+{#if query_result}
 <ResultsTable results={query_result}/>
+{:else}
+<p>query running...</p>
+{/if}

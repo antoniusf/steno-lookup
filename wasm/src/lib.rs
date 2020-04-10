@@ -608,6 +608,84 @@ fn parse_stroke_fast(buffer: &[u8], pos: &mut usize) -> Result<u32, &'static [u8
     return Ok(stroke);
 }
 
+#[link(wasm_import_module = "env")]
+extern { fn yield_result(string_offset: u32, string_length: u32, stroke_offset: u32, stroke_length: u32); }
+
+// stroke_array_length is the length of the stroke array in terms of contained type, not in bytes
+#[no_mangle]
+pub unsafe extern fn query(offset: u32, length: u32, string_array_offset: u32, string_array_length: u32, stroke_array_offset: u32, stroke_array_length: u32) {
+    let query = core::slice::from_raw_parts(
+        offset as *const u8,
+        length as usize
+    );
+    let strings = core::slice::from_raw_parts(
+        string_array_offset as *const u8,
+        string_array_length as usize
+    );
+    let strokes = core::slice::from_raw_parts(
+        stroke_array_offset as *const u32,
+        stroke_array_length as usize
+    );
+    if stroke_array_length == 0 {
+        log_err_internal(b"this is weird?".as_ref());
+    }
+    query_internal(query, strings, strokes).unwrap_or_else(log_err_internal);
+}
+
+fn query_internal(query: &[u8], strings: &[u8], strokes: &[u32]) -> Result<(), &'static [u8]> {
+    let mut string_pos = 0;
+    let mut stroke_pos = 0;
+
+    let index_error = b"query: indexing error (this shouldn't happen)".as_ref();
+
+    while string_pos < strings.len() {
+        let length = *strings.get(string_pos).ok_or(index_error)? as usize
+            | ((*strings.get(string_pos+1).ok_or(index_error)? as usize) << 8);
+        
+        string_pos += 2;
+        let string = strings.get(string_pos..string_pos + length).ok_or(index_error)?;
+        string_pos += length;
+
+        let stroke_start = stroke_pos;
+        loop {
+
+            //let mut a = *b"query: getting stroke failed.  string info:           of         ";
+            //let mut num = strings.len();
+            //let mut num2 = string_pos;
+            //let mut idx = a.len();
+            //while idx > a.len() - 8 {
+            //    idx -= 1;
+            //    a[idx] = (num2 % 10) as u8 + b'0';
+            //    a[idx-12] = (num % 10) as u8 + b'0';
+            //    num /= 10;
+            //    num2 /= 10;
+            //}
+
+            let stroke = *strokes.get(stroke_pos).ok_or(index_error)?;
+            //if let Some(&stroke) = strokes.get(stroke_pos) {
+            stroke_pos += 1;
+            if (stroke >> 31) == 1 {
+                break;
+            }
+            //}
+            //else {
+            //    log_err_internal(&a);
+            //    return Err(b"There was a problem with getting the stroke, see above.".as_ref());
+            //}
+        }
+        let stroke_end = stroke_pos;
+        let stroke = strokes.get(stroke_start..stroke_end).ok_or(index_error)?;
+
+        if string == query {
+            log_err_internal(b"we found a match!!");
+            unsafe {
+                yield_result(string.as_ptr() as u32, length as u32, stroke.as_ptr() as u32, (stroke_end - stroke_start) as u32);
+            }
+        }
+    }
+    return Ok(());
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
