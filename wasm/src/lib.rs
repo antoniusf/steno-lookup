@@ -48,7 +48,12 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 
 fn handle_loader_error(message: &[u8]) -> usize {
     log_err_internal(message);
+    // TODO: remove this call to panic? It's the last panic in the code,
+    // and removing it will save about 500 bytes.
     panic!();
+    //unsafe {
+    //    core::arch::wasm32::unreachable();
+    //}
 }
 
 #[no_mangle]
@@ -59,6 +64,8 @@ pub unsafe extern fn load_json(offset: u32, length: u32) -> u32 {
     );
     return load_json_internal(buffer).unwrap_or_else(handle_loader_error) as u32;
 }
+
+static INDEX_ERROR: &'static [u8; 45] = b"query: indexing error (this shouldn't happen)";
 
 // loads a json dictionary into two parallel packed arrays,
 // one for the strings (translations) and one for the strokes
@@ -105,8 +112,6 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
     
     // INVARIANT: read_pos >= write_pos + 1
 
-    log_err_internal(b"debug: before first pass");
-
     loop {
 
         // read key
@@ -135,8 +140,6 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
         }
         expect_char(buffer, &mut read_pos, b',')?;
     }
-
-    log_err_internal(b"debug: after first pass, allocating memory");
 
     // first pass is done.
     // second pass:
@@ -201,8 +204,6 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
         // whew
     }
 
-    log_err_internal(b"debug: before second pass");
-
     // second pass!
     // this is the end of the buffer, i.e. the index of the byte
     // one after the last one we wrote.
@@ -210,6 +211,8 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
     read_pos = 0;
     let mut string_write_pos = 0;
     let mut stroke_write_pos = 0;
+
+    let index_error = INDEX_ERROR.as_ref();
 
     while read_pos < buffer_end {
         
@@ -220,14 +223,14 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
 
             let mut stroke = parse_stroke_fast(buffer, &mut read_pos)?;
 
-            let end_byte = *buffer.get(read_pos).ok_or(b"Error occured while reading stroke".as_ref())?;
+            let end_byte = *buffer.get(read_pos).ok_or(index_error)?;
             read_pos += 1;
             
             if end_byte == b'"' {
                 stroke |= is_last_stroke;
             }
 
-            *stroke_array.get_mut(stroke_write_pos).ok_or(b"Error occured while writing stroke".as_ref())? = stroke;
+            *stroke_array.get_mut(stroke_write_pos).ok_or(index_error)? = stroke;
             stroke_write_pos += 1;
 
             if end_byte == b'"' {
@@ -245,49 +248,24 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
         string_write_pos += 2;
         
         loop {
-            let byte = *buffer.get(read_pos).ok_or(b"Error occured while reading string".as_ref())?;
+            let byte = *buffer.get(read_pos).ok_or(index_error)?;
             read_pos += 1;
 
             if byte == 0 {
                 break;
             }
 
-            *buffer.get_mut(string_write_pos).ok_or(b"Error occured while writing string".as_ref())? = byte;
+            *buffer.get_mut(string_write_pos).ok_or(index_error)? = byte;
             string_write_pos += 1;
             length += 1;
         }
 
-        let length_u16 = u16::try_from(length).or(Err("Parser error: a string in your dictionary is longer than 64kB, which is very big and kind of surprising. I am sorry, but we cannot handle this right now, and probably never will.")).unwrap();
+        let length_u16 = u16::try_from(length).or(Err(b"Parser error: a string in your dictionary is longer than 64kB, which is very big and kind of surprising. I am sorry, but we cannot handle this right now, and probably never will.".as_ref()))?;
 
         // write the length in little endian
-        *buffer.get_mut(length_field).ok_or(b"Error occured while writing length 1".as_ref())? = (length_u16 & 0xFF) as u8;
-        *buffer.get_mut(length_field+1).ok_or(b"Error occured while writing length 1".as_ref())? = (length_u16 >> 8) as u8;
+        *buffer.get_mut(length_field).ok_or(index_error)? = (length_u16 & 0xFF) as u8;
+        *buffer.get_mut(length_field+1).ok_or(index_error)? = (length_u16 >> 8) as u8;
     }
-
-    log_err_internal(b"debug: after second pass");
-
-    // sanity check
-    assert_eq!(string_write_pos, string_array_length);
-    log_err_internal(b"debug: in sanity check");
-
-    {
-        let mut a = *b"string array length:          / string write pos:         ";
-        let mut num = string_array_length;
-        let mut num2 = string_write_pos;
-        let mut idx = a.len();
-        while idx > a.len() - 8 {
-            idx -= 1;
-            a[idx] = (num2 % 10) as u8 + b'0';
-            a[idx-28] = (num % 10) as u8 + b'0';
-            num /= 10;
-            num2 /= 10;
-        }
-
-        log_err_internal(&a);
-    }
-    assert_eq!(stroke_write_pos*4, stroke_array_length);
-
-    log_err_internal(b"debug: done");
 
     return Ok(new_data_start);
 }
@@ -322,14 +300,14 @@ fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut us
 
         if escape_next {
             if byte == b'"' || byte == b'\\' {
-                buffer[*write_pos] = byte;
+                *buffer.get_mut(*write_pos).ok_or(INDEX_ERROR.as_ref())? = byte;
                 *write_pos += 1;
                 final_size_guess_string += 1;
             }
             else {
                 // copy the escape sequence unchanged
-                buffer[*write_pos] = b'\\';
-                buffer[*write_pos+1] = byte;
+                *buffer.get_mut(*write_pos).ok_or(INDEX_ERROR.as_ref())? = b'\\';
+                *buffer.get_mut(*write_pos+1).ok_or(INDEX_ERROR.as_ref())? = byte;
                 *write_pos += 2;
                 final_size_guess_string += 2;
             }
@@ -349,7 +327,7 @@ fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut us
                 escape_next = true;
             }
             else {
-                buffer[*write_pos] = byte;
+                *buffer.get_mut(*write_pos).ok_or(INDEX_ERROR.as_ref())? = byte;
                 *write_pos += 1;
                 final_size_guess_string += 1;
             }
@@ -362,10 +340,10 @@ fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut us
     // INVARIANT: read_pos >= write_pos + 2
 
     if is_strokes {
-        buffer[*write_pos] = b'"';
+        *buffer.get_mut(*write_pos).ok_or(INDEX_ERROR.as_ref())? = b'"';
     }
     else {
-        buffer[*write_pos] = 0;
+        *buffer.get_mut(*write_pos).ok_or(INDEX_ERROR.as_ref())? = 0;
     }
     *write_pos += 1;
     // INVARIANT: read_pos >= write_pos + 1
@@ -586,7 +564,7 @@ fn parse_stroke_fast(buffer: &[u8], pos: &mut usize) -> Result<u32, &'static [u8
     let mut state = 0;
     let mut stroke = 0;
     while (state & (1 << 7)) == 0 {
-        let byte = *buffer.get(*pos).ok_or(b"Error while reading stroke (in parse_stroke_fast)".as_ref())?;
+        let byte = *buffer.get(*pos).ok_or(b"Parser error: Reached end of data while reading stroke (in parse_stroke_fast)".as_ref())?;
         *pos += 1;
 
         // first, cast up to u32, since we'll have to go up anyways.
@@ -626,9 +604,6 @@ pub unsafe extern fn query(offset: u32, length: u32, string_array_offset: u32, s
         stroke_array_offset as *const u32,
         stroke_array_length as usize
     );
-    if stroke_array_length == 0 {
-        log_err_internal(b"this is weird?".as_ref());
-    }
     query_internal(query, strings, strokes).unwrap_or_else(log_err_internal);
 }
 
@@ -677,7 +652,6 @@ fn query_internal(query: &[u8], strings: &[u8], strokes: &[u32]) -> Result<(), &
         let stroke = strokes.get(stroke_start..stroke_end).ok_or(index_error)?;
 
         if string == query {
-            log_err_internal(b"we found a match!!");
             unsafe {
                 yield_result(string.as_ptr() as u32, length as u32, stroke.as_ptr() as u32, (stroke_end - stroke_start) as u32);
             }
