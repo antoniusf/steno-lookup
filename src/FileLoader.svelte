@@ -3,7 +3,7 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import { set, get, del } from 'idb-keyval';
   import { textToStroke, strokeToText } from './util';
-  import { loadJson } from './wasm-interface.js';
+  import { initialize, loadJson } from './wasm-interface.js';
 
   const dispatch = createEventDispatcher();
 
@@ -26,6 +26,7 @@
         } else {
             // TODO: can this fail?
 	    dictionary = stored_dictionary;
+	    initialize(dictionary);
             status = "loaded";
             signalDone();
         }
