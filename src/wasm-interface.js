@@ -20,7 +20,7 @@ function logErr (offset, length) {
 function yield_result (string_offset, string_length, strokes_offset, strokes_length) {
     let string = text_decoder.decode(new Uint8Array(memory.buffer, string_offset, string_length));
     let strokes = new Uint32Array(memory.buffer, strokes_offset, strokes_length);
-    results.push([string, strokesToText(strokes)]);
+    results.push([strokesToText(strokes), string]);
 }
 
 export async function loadWasm (url) {
