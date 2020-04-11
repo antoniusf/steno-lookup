@@ -66,7 +66,7 @@
 <div id="container">
   <header>
     <h1>{titles[status]}</h1>
-    <button id="switch" on:click={e => { if (status == "find-stroke") { status = "query" } else { status = "find-stroke"} }}>
+    <button id="switch" on:click={e => { if (status == "find-stroke") { status = "query" } else { status = "find-stroke"} }} disabled={dictionary == null}>
       {#if (status == "find-stroke")}
         <img src="abc-icon.svg" alt="lookup steno"/>
       {:else}
@@ -140,6 +140,10 @@
       color: white;
       cursor: pointer;
       padding: 0;
+    }
+
+    button:disabled {
+      background-color: #aaa;
     }
 
     button > img {
