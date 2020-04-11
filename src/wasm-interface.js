@@ -1,4 +1,4 @@
-import { strokesToText } from './util';
+import { strokesToText, textToStroke } from './util';
 
 let text_decoder = new TextDecoder("utf-8");
 let text_encoder = new TextEncoder("utf-8");
@@ -196,8 +196,31 @@ export async function doQuery(dictionary, query) {
     query_info.results.splice(0, query_info.results.length);
     const start = performance.now();
     instance.exports.query(query_info.query_start, encoded_query.length,
-		       query_info.strings_start, query_info.strings_length,
-		       query_info.strokes_start, query_info.strokes_length);
+			   query_info.strings_start, query_info.strings_length,
+			   query_info.strokes_start, query_info.strokes_length,
+			   0);
+    console.log(`query took ${performance.now() - start}ms`);
+    return query_info.results;
+}
+
+export async function findStroke(dictionary, stroke) {
+    if (!query_instance) {
+	console.log("Error: doQuery: there is currently now wasm module loaded for querying. Call prepare_instance_for_querying first.");
+	return;
+    }
+
+    // wait for the instance, in case it's still being prepared
+    let query_info = await query_instance;
+    let instance = query_info.instance;
+
+    // clear results in place
+    // this is necessary since it is captured by the yield_results function, so we can't reassign
+    query_info.results.splice(0, query_info.results.length);
+    const start = performance.now();
+    instance.exports.query(stroke, 0,
+			   query_info.strings_start, query_info.strings_length,
+			   query_info.strokes_start, query_info.strokes_length,
+			   1);
     console.log(`query took ${performance.now() - start}ms`);
     return query_info.results;
 }

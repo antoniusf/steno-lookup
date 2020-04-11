@@ -590,12 +590,12 @@ fn parse_stroke_fast(buffer: &[u8], pos: &mut usize) -> Result<u32, &'static [u8
 extern { fn yield_result(string_offset: u32, string_length: u32, stroke_offset: u32, stroke_length: u32); }
 
 // stroke_array_length is the length of the stroke array in terms of contained type, not in bytes
+// if find_stroke == 0, performs a normal lookup using the query term starting at the given offset
+//                      with the given length
+// if find_stroke == 1, performs a stroke lookup by interpreting the offset field as a stroke. length is unused.
 #[no_mangle]
-pub unsafe extern fn query(offset: u32, length: u32, string_array_offset: u32, string_array_length: u32, stroke_array_offset: u32, stroke_array_length: u32) {
-    let query = core::slice::from_raw_parts(
-        offset as *const u8,
-        length as usize
-    );
+pub unsafe extern fn query(offset: u32, length: u32, string_array_offset: u32, string_array_length: u32, stroke_array_offset: u32, stroke_array_length: u32, find_stroke: u8) {
+
     let strings = core::slice::from_raw_parts(
         string_array_offset as *const u8,
         string_array_length as usize
@@ -604,7 +604,18 @@ pub unsafe extern fn query(offset: u32, length: u32, string_array_offset: u32, s
         stroke_array_offset as *const u32,
         stroke_array_length as usize
     );
-    query_internal(query, strings, strokes).unwrap_or_else(log_err_internal);
+
+    if find_stroke == 0 {
+        let query = core::slice::from_raw_parts(
+            offset as *const u8,
+            length as usize
+        );
+        query_internal(query, strings, strokes).unwrap_or_else(log_err_internal);
+    }
+    else {
+        let query_stroke = offset;
+        find_stroke_internal(query_stroke, strings, strokes).unwrap_or_else(log_err_internal);
+    }
 }
 
 fn query_internal(query: &[u8], strings: &[u8], strokes: &[u32]) -> Result<(), &'static [u8]> {
@@ -657,6 +668,51 @@ fn query_internal(query: &[u8], strings: &[u8], strokes: &[u32]) -> Result<(), &
             }
         }
     }
+    return Ok(());
+}
+
+fn find_stroke_internal(mut query_stroke: u32, strings: &[u8], strokes: &[u32]) -> Result<(), &'static [u8]> {
+    
+    let mut start_stroke_pos = 0;
+    let mut string_pos = 0;
+
+    // right now, this finds only ending strokes. (this includes single stroke defs)
+    // TODO: maybe we want a better method?
+    query_stroke |= 1 << 31;
+
+    let mut is_match = false;
+    
+    for stroke_pos in 0..strokes.len() {
+        let stroke = strokes[stroke_pos];
+        
+        if stroke == query_stroke {
+            is_match = true;
+        }
+
+        if (stroke >> 31) == 1 {
+
+            // skip one forward in the strings array
+            let length = (strings[string_pos] as usize) + ((strings[string_pos+1] as usize) << 8);
+            let string = strings.get(string_pos+2 .. string_pos+2+length).ok_or(b"index error".as_ref())?;
+            string_pos += 2 + length;
+
+            // write out the definition
+            if is_match == true {
+                if start_stroke_pos == stroke_pos { // count only single stroke defs
+                    let strokes = strokes.get(start_stroke_pos .. stroke_pos+1).ok_or(b"index error for strokes".as_ref())?;
+                    unsafe {
+                        yield_result(string.as_ptr() as u32, string.len() as u32, strokes.as_ptr() as u32, strokes.len() as u32);
+                    }
+                }
+            }
+
+            // this definition has ended
+            start_stroke_pos = stroke_pos + 1;
+
+            is_match = false;
+        }
+    }
+
     return Ok(());
 }
 
