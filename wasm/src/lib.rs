@@ -74,36 +74,17 @@ static INDEX_ERROR: &'static [u8; 45] = b"query: indexing error (this shouldn't 
 struct Offsets {
     hash_table: usize,
     stroke_index: usize,
-    entries: usize
+    definitions: usize,
+    end: usize
 }
 
-#[repr(packed)]
+#[repr(packed(2))]
 struct StrokeIndexEntry {
     last_two_bytes: u16,
-    entry_offset: usize
+    definition_offset: usize
 }
 
-#[repr(packed)]
-struct StrokePrefixEntry {
-    first_byte: u8,
-    index_offset: usize
-}
-
-struct FullStrokeEntry {
-    stroke: u32,
-    entry_offset: usize
-}
-
-// loads a json dictionary into two parallel packed arrays,
-// one for the strings (translations) and one for the strokes
-// in 4-byte format. the string array will replace the initial
-// json buffer, while the stroke array will go into newly allocated
-// memory. the function returns a pointer to the start of this new
-// memory, which has two u32s that give the length of the string and
-// stroke array (in bytes), respectively, followed by the packed
-// stroke array. the lengths are not strictly necessary, but they
-// will save the js code some work when it picks the results out of
-// our memory.
+// loads a json array into our custom memory format.
 pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
     // in-place parsing turned out to not be possible in the end.
     // so, we're not going to do it.
@@ -118,7 +99,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
     // pre-parse the json.
     // this serves two purposes: first, validating the json input,
     // (and converting it into a binary format that's easier to read)
-    // and second, determining the sizes of the required packed array,
+    // and second, determining the sizes of the required packed arrays,
     // so we know how much to allocate.
     //
     // note: this is not a full-fledged json parser. it is specifically
@@ -128,9 +109,8 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
     let mut read_pos = 0;
     let mut write_pos = 0;
 
-    let mut entry_array_size = 0;
-    let mut num_entries = 0;
-    let mut num_strokes = 0;
+    let mut definitions_size = 0;
+    let mut num_definitions = 0;
 
     // strokes will be stored in what i think is like a two-layer
     // prefix-tree? or something? the first layer is indexed by the
@@ -141,7 +121,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
     // and we're doing this in the first pass so that during the
     // second pass we can place the strokes in the right place
     // directly.
-    let mut stroke_index_layer2_lengths = [0; 256];
+    let mut stroke_subindex_lengths = [0; 256];
 
     // unfortunately, we can't use an iterator for all this since we
     // need to be able to write the slice while doing this.
@@ -157,11 +137,10 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
 
         // read key
         skip_whitespace(buffer, &mut read_pos)?;
+
+        // read/validate the strokes string first, then parse out the stroke
         let mut strokes_reader = write_pos;
-        let num_strokes_for_this_def = rewrite_string(&mut buffer, &mut read_pos, &mut write_pos, true)?;
-        
-        num_strokes += num_strokes_for_this_def;
-        entry_array_size += num_strokes_for_this_def * 3;
+        definitions_size += rewrite_string(&mut buffer, &mut read_pos, &mut write_pos, true)?;
         // INVARIANT: read_pos >= write_pos + 1
 
         // parse the strokes for the first time, to fill in stroke_index_layer2_lengths
@@ -169,9 +148,10 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
             let stroke = parse_stroke_fast(&buffer, &mut strokes_reader)?;
 
             // currently, we're only indexing single-stroke defs
-            if buffer.get(strokes_reader).ok_or(index_error)? == b'"' {
-                let stroke_byte0 = stroke & 0xFF;
-                stroke_index_layer2_lengths[stroke_byte0] += 1;
+            let is_last_stroke = buffer.get(strokes_reader).ok_or(index_error)? == b'"';
+            if is_last_stroke {
+                let first_byte = (stroke & 0xFF) as u8;
+                stroke_subindex_lengths[first_byte] += 1;
             }
         }
 
@@ -180,13 +160,13 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
         skip_whitespace(buffer, &mut read_pos)?;
 
         // read value
-        entry_array_size += rewrite_string(&mut buffer, &mut read_pos, &mut write_pos, false)?;
+        definitions_size += rewrite_string(&mut buffer, &mut read_pos, &mut write_pos, false)?;
         // INVARIANT: read_pos >= write_pos + 1
         // (note: we could get better bounds in practice, since each
         //  string read actually increases the space by one. but we
         //  don't need these, so this is how it's going to stay.)
 
-        num_entries += 1;
+        num_definitions += 1;
 
         skip_whitespace(buffer, &mut read_pos)?;
 
@@ -200,7 +180,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
     }
 
     let hash_table_load_factor = 0.85;
-    let hash_table_length = (num_entries / hash_table_load_factor) as u32;
+    let hash_table_length = (num_definitions / hash_table_load_factor) as u32;
     let hash_table_size = hash_table_length * size_of<u32>();
     let probe_count_array_length = hash_table_length;
     let probe_count_array_size = probe_count_array_length * size_of<u32>();
@@ -208,13 +188,10 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
     // determine the length of the stroke index
     // stroke_index_layer2_lengths contains the length of each subarray,
     // so if we add them all up we get the total amount of space needed
-    let stroke_index_length = stroke_index_layer2_lengths.iter().sum();
-    let stroke_index_size = stroke_index_length * size_of<StrokeIndexEntry>();
-    let stroke_prefix_lookup_length = 256;
-    let stroke_prefix_lookup_size = stroke_prefix_lookup_length * size_of<StrokePrefixEntry>();
-
-    let temp_stroke_array_length = num_strokes;
-    let temp_stroke_array_size = num_strokes * size_of<u32>();
+    let stroke_subindices_length = stroke_subindex_lengths.iter().sum();
+    let stroke_subindices_size = stroke_index_length * size_of<StrokeIndexEntry>();
+    let stroke_prefix_lookup_length = 257;
+    let stroke_prefix_lookup_size = stroke_prefix_lookup_length * size_of<usize>();
 
     // first pass is done.
     // second pass:
@@ -228,11 +205,11 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
     let u32_align = core::mem::align_of::<u32>();
     
     let memory_needed = size_of::<Offsets>()
-        + hash_table_size
-        + stroke_prefix_lookup_size
-        + stroke_index_size
-        + entry_array_size // but it needs to go last, since it's unaligned
-        + probe_count_array_size // this will be deleted when we are done
+        + hash_table_size // requires align 4, maintains align 4
+        + stroke_prefix_lookup_size // requires align 4, maintains align 4
+        + stroke_subindices_size // requires align 2, maintains align 2
+        + definitions_size // requires align 1, maintains align 1
+        + probe_count_array_size // this is a helper for hash table creation, it will be deleted when we are done
 
     let wasm_page_size = 65536;
     // this is just a rounding-up division for ints.
@@ -242,7 +219,11 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
     let previous_mem_size_pages = core::arch::wasm32::memory_grow(0, number_of_new_pages);
     let new_memory_start = previous_mem_size_pages * wasm_page_size;
 
-    let stroke_array;
+    let hash_table;
+    let stroke_prefix_lookup;
+    let stroke_subindices;
+    let definitions;
+    let probe_count_array;
     let offset_info;
 
     unsafe {
@@ -266,25 +247,25 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
         offset += hash_table_size;
 
         stroke_prefix_lookup = core::slice::from_raw_parts_mut(
-            (new_memory_start + offset) as *mut StrokePrefixEntry,
+            (new_memory_start + offset) as *mut usize,
             stroke_prefix_lookup_length
         );
 
         offset += stroke_prefix_lookup_size;
 
-        stroke_index = core::slice::from_raw_parts_mut(
+        stroke_subindices = core::slice::from_raw_parts_mut(
             (new_memory_start + offset) as *mut StrokeIndexEntry,
-            stroke_index_length
+            stroke_subindices_length
         );
 
-        offset += stroke_index_size;
+        offset += stroke_subindices_size;
 
-        entry_array = core::slice::from_raw_parts_mut(
+        definitions = core::slice::from_raw_parts_mut(
             (new_memory_start + offset) as *mut u8,
-            entry_array_size
+            definitions_size
         );
 
-        offset += entry_array_size;
+        offset += definitions_size;
 
         // re-align the pointer, since entry_array doesn't
         // preserve alignment
@@ -303,22 +284,18 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
     }
 
     // initialization
-    // hash_table and stroke_prefix_lookup are sparse structures, so
-    // we'll need to initialize them.
+    // hash_table is a sparse structure, so
+    // we'll need to initialize it.
     for elem in hash_table {
-        *elem = 0;
-    }
-
-    for elem in stroke_prefix_lookup {
-        *elem = 0;
+        *elem = usize::max_value();
     }
 
     // also store our offset_info
     // length of the hash table is given by the start of stroke_index
-    offset_info.hash_table = hash_table.as_ptr() as usize;
-    offset_info.stroke_index = stroke_prefix_lookup.as_ptr() as usize;
-    offset_info.entries = entry_array.as_ptr() as usize;
-    offset_info.entries_size = entry_array_size;
+    offset_info.hash_table = hash_table.as_ptr() as usize - new_memory_start;
+    offset_info.stroke_index = stroke_prefix_lookup.as_ptr() as usize - new_memory_start;
+    offset_info.definitions = definitions.as_ptr() as usize - new_memory_start;
+    offset_info.end = offset_info.definitions + definitions.len();
 
     // second pass!
     // this is the end of the buffer, i.e. the index of the byte
@@ -328,7 +305,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
 
     while read_pos < buffer_end {
         
-        let entry_start = read_pos;
+        let definition_start = read_pos;
         
         // skip the strokes, we only care about the hash table for now
         let mut byte = *buffer.get(read_pos).ok_or(index_error)?;
@@ -348,7 +325,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
             if byte == 0 {
                 // (read_pos - 1) since we're ignoring the null byte
                 let string = &buffer[string_start .. (read_pos - 1)];
-                add_to_hash_table(string, entry_start as u32, &mut hash_table, &mut probe_count_array);
+                add_to_hash_table(string, definition_start as u32, &mut hash_table, &mut probe_count_array);
                 break;
             }
         }
@@ -363,40 +340,46 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
     // determine layout of the stroke index and write it into the stroke prefix lookup table
     // stroke_index_layer2_lengths contains the length of each subarray. since the subarrays
     // are packed in order, all we have to do is a prefix sum to get the offset for each array.
+    // NOTE that doing it this way means that unused subindices simply get a length of 0, but
+    // still have a valid offset, which is kind of handy.
     let accumulator = 0;
-    for index, length in stroke_index_layer2_lengths.enumerate() {
+    for index, length in stroke_subindex_lengths.enumerate() {
         stroke_prefix_lookup[index] = accumulator;
         accumulator += length;
     }
+    stroke_prefix_lookup[256] = accumulator;
 
     // also, store the current write position for each subarray, so we can push values
-    let stroke_index_layer2_positions = [0; 256];
+    let stroke_subindex_write_positions = [0; 256];
     
     let last_stroke_marker = 1 << 23;
-    let mut entry_writer = 0;
+    let mut definition_writer = 0;
     
     for mut bucket in hash_table {
-        let mut entry_reader = *bucket;
+        let mut definition_reader = *bucket;
 
         // we have to write the string first, so skip the strokes for now
-        let strokes_start = entry_reader;
+        let strokes_start = definition_reader;
         loop {
-            let byte = *buffer.get(entry_reader).ok_or(index_error)?;
+            let byte = *buffer.get(definition_reader).ok_or(index_error)?;
             entry_reader += 1;
             if byte == b'"' {
                 break;
             }
         }
-        let strokes_end = entry_reader;
+        let strokes_end = definition_reader;
+
+        let definition_offset = definition_reader;
+        // store the new definition offset in the hashmap
+        *bucket = definition_offset;
 
         // write the string
-        let entry_offset = entry_reader;
         loop {
             let byte = *buffer.get(entry_reader).ok_or(index_error)?;
-            entry_reader += 1;
+            definition_reader += 1;
 
-            *entry_array.get_mut(entry_writer).ok_or(index_error)? = byte;
-            entry_writer += 1;
+            *definitions.get_mut(definition_writer).ok_or(index_error)? = byte;
+            definition_writer += 1;
 
             // check after writing, so that the final null byte is copied
             if byte == 0 {
@@ -405,12 +388,12 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
         }
         
         // read strokes
-        entry_reader = strokes_start;
+        let mut stroke_reader = strokes_start;
         let is_first_stroke = true;
-        while entry_reader < strokes_end {
-            let stroke = parse_stroke_fast(&buffer, &mut entry_reader);
-            let end_byte = buffer[entry_reader];
-            entry_reader += 1;
+        while stroke_reader < strokes_end {
+            let stroke = parse_stroke_fast(&buffer, &mut stroke_reader);
+            let end_byte = buffer[stroke_reader];
+            stroke_reader += 1;
 
             if (end_byte == b'"') {
                 stroke |= last_stroke_marker;
@@ -420,29 +403,45 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
                     let first_byte = (stroke & 0xFF) as u8;
                     // tis works since stroke only uses the lower three bytes
                     let last_bytes = (stroke >> 8) as u16;
-                    let layer2_offset = stroke_prefix_lookup[first_byte];
-                    let layer2_write_pos = &mut stroke_index_layer2_positions[first_byte];
-                    let index_entry_pos = layer2_offset + *layer2_write_pos;
+                    let subindex_offset = stroke_prefix_lookup[first_byte as usize];
+                    let subindex_write_pos = &mut stroke_subindex_write_positions[first_byte as usize];
+                    let index_entry_pos = subindex_offset + *subindex_write_pos;
                     stroke_index[index_entry_pos] = StrokeIndexEntry {
                         last_two_bytes: last_bytes,
                         // this is the offset into the main entry array
-                        entry_offset: entry_offset
+                        definition_offset: definition_offset
                     };
-                    *layer2_write_pos += 1;
+                    *subindex_write_pos += 1;
                 }
             }
 
             // write stroke
-            entry_array[entry_writer] = (stroke & 0xFF) as u8;
-            entry_array[entry_writer+1] = ((stroke >> 8) & 0xFF) as u8;
-            entry_array[entry_writer+2] = (stroke >> 16) as u8;
-            entry_writer += 3;
+            definitions[definition_writer] = (stroke & 0xFF) as u8;
+            definitions[definition_writer+1] = ((stroke >> 8) & 0xFF) as u8;
+            definitions[definition_writer+2] = (stroke >> 16) as u8;
+            definition_writer += 3;
 
             is_first_stroke = false;
         }
     }
 
-    return Ok(new_data_start);
+    // fourth pass: sort the level2 stroke index arrays, so we can
+    // binary search through them. TODO: store them as parallel arrays
+    // for stroke bytes + definition pointers, so all reads are aligned
+    // and fast?
+    for i in 0..256 {
+        let offset = stroke_prefix_lookup[i];
+        let end = stroke_prefix_lookup[i+1];
+        // subindex.len() may be 0 if there is no subindex for this start byte
+        let subindex = &mut stroke_index[offset .. end];
+        subindex.sort_by_key(stroke_index_sortkey);
+    }
+
+    return Ok(new_memory_start);
+}
+
+fn stroke_index_sortkey(entry: &StrokeIndexEntry) -> u16 {
+    entry.last_two_bytes
 }
 
 fn add_to_hash_table(string: &[u8], mut value: u32, hash_table: &mut [u32], probe_counts: &mut [u32]) -> Result<(), &'static [u8]> {
@@ -482,8 +481,9 @@ fn add_to_hash_table(string: &[u8], mut value: u32, hash_table: &mut [u32], prob
     }
 }
 
-// if is_strokes is true, returns the number of strokes contained in the string.
-// otherwise, it will return the length of the null-terminated string.
+// returns the length of this value in the final entry array, in bytes.
+// if is_strokes is true, this is the number of forward slashes plus one, times three. (three bytes per stroke)
+// otherwise, it is the number of bytes in the string plus one (for the null terminator).
 // if is_strokes is true, it will also ensure that the string is free of escape sequences (and thus quotes)
 // and terminate it with a double quote instead of NULL, since that is what parse_strokes needs.
 fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut usize, is_strokes: bool) -> Result<usize, &'a [u8]> {
@@ -498,7 +498,7 @@ fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut us
     // I think it's simpler to just compute both and then
     // only return the one we need. It saves some ifs.
     let mut final_size_guess_string = 1;
-    let mut num_strokes = 1;
+    let mut final_size_guess_strokes = 3;
 
     expect_char(&buffer, read_pos, b'"')?;
     // INVARIANT: read_pos >= write_pos + 1
@@ -545,7 +545,7 @@ fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut us
         }
 
         if byte == b'/' {
-            num_strokes += 1;
+            final_size_guess_strokes += 3;
         }
     }
     // INVARIANT: read_pos >= write_pos + 2
@@ -560,7 +560,7 @@ fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut us
     // INVARIANT: read_pos >= write_pos + 1
 
     if is_strokes {
-        return Ok(num_strokes);
+        return Ok(final_size_guess_strokes);
     }
     else {
         return Ok(final_size_guess_string);
