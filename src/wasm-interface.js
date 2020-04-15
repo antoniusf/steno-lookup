@@ -138,12 +138,12 @@ export async function loadJson (json) {
     console.log(`after wasm (took ${performance.now() - start}ms)`);
 
     const lengths = new Uint32Array(wasm.exports.memory.buffer, info_ptr, 4);
-    const data_length = lengths[3] - info_ptr;
+    const data_length = lengths[3];
 
     console.log(`data length: ${data_length}`);
 
     // use slice to create a copy of this array, so we can release the memory
-    const data_array = new Uint8Array(wasm.exports.memory.buffer, info_ptr, data_array_length).slice();
+    const data_array = new Uint8Array(wasm.exports.memory.buffer, info_ptr, data_length).slice();
     let dictionary = { data: data_array };
 
     // [releasing the memory along with the wasm instance:]
