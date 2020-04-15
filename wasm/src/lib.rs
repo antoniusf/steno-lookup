@@ -810,20 +810,36 @@ fn parse_stroke_fast(buffer: &[u8], pos: &mut usize) -> Result<u32, (&'static [u
 #[link(wasm_import_module = "env")]
 extern { fn yield_result(string_offset: u32, string_length: u32, stroke_offset: u32, stroke_length: u32); }
 
-// stroke_array_length is the length of the stroke array in terms of contained type, not in bytes
 // if find_stroke == 0, performs a normal lookup using the query term starting at the given offset
 //                      with the given length
 // if find_stroke == 1, performs a stroke lookup by interpreting the offset field as a stroke. length is unused.
 #[no_mangle]
-pub unsafe extern fn query(offset: u32, length: u32, string_array_offset: u32, string_array_length: u32, stroke_array_offset: u32, stroke_array_length: u32, find_stroke: u8) {
+pub unsafe extern fn query(offset: u32, length: u32, data_offset: usize, find_stroke: u8) {
 
-    let strings = core::slice::from_raw_parts(
-        string_array_offset as *const u8,
-        string_array_length as usize
+    let offset_info = &*(data_offset as *const Offsets);
+    let hashmap_size = offset_info.stroke_index - offset_info.hash_table;
+    let hashmap = core::slice::from_raw_parts(
+        (offset_info.hash_table + data_offset) as *const usize,
+        hashmap_size / size_of::<usize>()
     );
-    let strokes = core::slice::from_raw_parts(
-        stroke_array_offset as *const u32,
-        stroke_array_length as usize
+    let stroke_prefix_lookup = core::slice::from_raw_parts(
+        (offset_info.stroke_index + data_offset) as *const usize,
+        257
+    );
+    let stroke_prefix_lookup_size = 257 * size_of::<usize>();
+
+    let stroke_subindices_offset = offset_info.stroke_index + stroke_prefix_lookup_size;
+    let stroke_subindices_size = offset_info.definitions - stroke_subindices_offset;
+    
+    let stroke_subindices = core::slice::from_raw_parts(
+        (stroke_subindices_offset + data_offset) as *const StrokeIndexEntry,
+        stroke_subindices_size / size_of::<StrokeIndexEntry>()
+    );
+
+    let definitions_size = offset_info.end - offset_info.definitions;
+    let definitions = core::slice::from_raw_parts(
+        (offset_info.definitions + data_offset) as *const u8,
+        definitions_size
     );
 
     if find_stroke == 0 {
@@ -831,64 +847,64 @@ pub unsafe extern fn query(offset: u32, length: u32, string_array_offset: u32, s
             offset as *const u8,
             length as usize
         );
-        query_internal(query, strings, strokes).unwrap_or_else(log_err_internal);
+        query_internal(query, hashmap, definitions).unwrap_or_else(log_err_internal);
     }
     else {
         let query_stroke = offset;
-        find_stroke_internal(query_stroke, strings, strokes).unwrap_or_else(log_err_internal);
+        //find_stroke_internal(query_stroke, strings, strokes).unwrap_or_else(log_err_internal);
     }
 }
 
-fn query_internal(query: &[u8], strings: &[u8], strokes: &[u32]) -> Result<(), (&'static [u8], u32)> {
-    let mut string_pos = 0;
-    let mut stroke_pos = 0;
+fn query_internal(query: &[u8], hashmap: &[usize], definitions: &[u8]) -> Result<(), (&'static [u8], u32)> {
 
     let index_error = b"query: indexing error (this shouldn't happen)".as_ref();
 
-    while string_pos < strings.len() {
-        let length = *strings.get(string_pos).ok_or((index_error, line!()))? as usize
-            | ((*strings.get(string_pos+1).ok_or((index_error, line!()))? as usize) << 8);
-        
-        string_pos += 2;
-        let string = strings.get(string_pos..string_pos + length).ok_or((index_error, line!()))?;
-        string_pos += length;
+    let hash = wyhash(query, 1);
+    let mut index = (hash as usize) % hashmap.len();
 
-        let stroke_start = stroke_pos;
-        loop {
-
-            //let mut a = *b"query: getting stroke failed.  string info:           of         ";
-            //let mut num = strings.len();
-            //let mut num2 = string_pos;
-            //let mut idx = a.len();
-            //while idx > a.len() - 8 {
-            //    idx -= 1;
-            //    a[idx] = (num2 % 10) as u8 + b'0';
-            //    a[idx-12] = (num % 10) as u8 + b'0';
-            //    num /= 10;
-            //    num2 /= 10;
-            //}
-
-            let stroke = *strokes.get(stroke_pos).ok_or((index_error, line!()))?;
-            //if let Some(&stroke) = strokes.get(stroke_pos) {
-            stroke_pos += 1;
-            if (stroke >> 31) == 1 {
-                break;
-            }
-            //}
-            //else {
-            //    log_err_internal(&a);
-            //    return Err(b"There was a problem with getting the stroke, see above.".as_ref());
-            //}
+    loop {
+        let entry_offset = hashmap[index];
+        if entry_offset == usize::max_value() {
+            break;
         }
-        let stroke_end = stroke_pos;
-        let stroke = strokes.get(stroke_start..stroke_end).ok_or((index_error, line!()))?;
+        
+        let string = &definitions[entry_offset..entry_offset + query.len()];
+        let is_match = (definitions[entry_offset + query.len()] == 0) && (string == query);
 
-        if string == query {
-            unsafe {
-                yield_result(string.as_ptr() as u32, length as u32, stroke.as_ptr() as u32, (stroke_end - stroke_start) as u32);
+        if is_match {
+            let strokes_start = entry_offset + string.len() + 1;
+            let mut stroke_pos = strokes_start;
+
+            // read strokes
+            loop {
+
+                let stroke1 = *definitions.get(stroke_pos).ok_or((index_error, line!()))? as u32;
+                let stroke2 = *definitions.get(stroke_pos+1).ok_or((index_error, line!()))? as u32;
+                let stroke3 = *definitions.get(stroke_pos+2).ok_or((index_error, line!()))? as u32;
+                stroke_pos += 3;
+
+                let stroke = stroke1 | (stroke2 << 8) | (stroke3 << 16);
+                if (stroke >> 23) == 1 {
+                    break;
+                }
             }
+            let strokes_end = stroke_pos;
+            let strokes = definitions.get(strokes_start..strokes_end).ok_or((index_error, line!()))?;
+
+            unsafe {
+                yield_result(string.as_ptr() as u32, string.len() as u32, strokes.as_ptr() as u32, (strokes_end - strokes_start) as u32);
+            }
+        }
+
+        // we'll keep searching even after finding a hit,
+        // since there may be multiple definitions for each translation
+
+        index += 1;
+        if index == hashmap.len() {
+            index = 0;
         }
     }
+
     return Ok(());
 }
 

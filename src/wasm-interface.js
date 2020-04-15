@@ -1,4 +1,4 @@
-import { strokesToText, textToStroke } from './util';
+import { packedStrokesToText, textToStroke } from './util';
 
 let text_decoder = new TextDecoder("utf-8");
 let text_encoder = new TextEncoder("utf-8");
@@ -49,7 +49,7 @@ async function instanciate(module) {
     function logErr (offset, length, line) {
 	if (memory) {
 	    const buffer = new Uint8Array(memory.buffer, offset, length);
-	    console.log("WebAssembly module panicked with '" + text_decoder.decode(buffer) + "' on line " + line);
+	    console.log("WebAssembly module panicked with '" + text_decoder.decode(buffer) + "' on line " + line + "\nraw buffer: " + buffer);
 	}
 	else {
 	    console.log("Warning: logErr got called, but memory was not initialized??");
@@ -60,8 +60,8 @@ async function instanciate(module) {
     // handily, this is just how the constructor for Uint32Array works!
     function yield_result (string_offset, string_length, strokes_offset, strokes_length) {
 	let string = text_decoder.decode(new Uint8Array(memory.buffer, string_offset, string_length));
-	let strokes = new Uint32Array(memory.buffer, strokes_offset, strokes_length);
-	results.push([strokesToText(strokes), string]);
+	let strokes = new Uint8Array(memory.buffer, strokes_offset, strokes_length);
+	results.push([packedStrokesToText(strokes), string]);
     }
 
     let instance = await WebAssembly.instantiate(await module, { env: { logErr: logErr, yield_result: yield_result }});

@@ -1,6 +1,6 @@
 <script>
     import ResultsTable from './ResultsTable.svelte';
-    import { strokeToText, strokesToText } from './util.js';
+    import { strokeToText } from './util.js';
     import { doQuery } from './wasm-interface.js';
     
     export let dictionary;
@@ -129,7 +129,7 @@
 		}
 
 		if (equal) {
-		    query_result.push([strokesToText(strokes), textdecoder.decode(translation)]);
+		    //query_result.push([strokesToText(strokes), textdecoder.decode(translation)]);
 		}
 	    }
 

@@ -74,9 +74,10 @@ export function strokeToText(stroke) {
     return text;
 }
 
-export function strokesToText(strokes) {
+export function packedStrokesToText(strokes) {
     let texts = [];
-    for (const stroke of strokes) {
+    for (let i = 0; i < strokes.length; i += 3) {
+	let stroke = strokes[i] | (strokes[i+1] << 8) | (strokes[i+2] << 16);
 	texts.push(strokeToText(stroke));
     }
     return texts.join("/");
