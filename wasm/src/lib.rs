@@ -8,12 +8,14 @@ use wyhash::wyhash;
 
 #[cfg(not(test))]
 #[link(wasm_import_module = "env")]
-extern { fn logErr(offset: u32, length: u32); }
+extern { fn logErr(offset: u32, length: u32, line: u32); }
 
 #[cfg(not(test))]
-fn log_err_internal(string: &[u8]) {
+fn log_err_internal(message: (&[u8], u32)) {
+    let string = message.0;
+    let line = message.1;
     unsafe {
-        logErr(string.as_ptr() as u32, string.len() as u32);
+        logErr(string.as_ptr() as u32, string.len() as u32, line);
     }
 }
 
@@ -35,13 +37,13 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 fn panic(info: &core::panic::PanicInfo) -> ! {
     if let Some(string) = info.payload().downcast_ref::<&str>() {
         unsafe {
-            logErr(string.as_ptr() as u32, string.len() as u32);
+            logErr(string.as_ptr() as u32, string.len() as u32, info.location().map_or(0, |loc| loc.line()));
         }
     }
     else {
         let string = "Panic occured, but we didn't get a usable payload.";
         unsafe {
-            logErr(string.as_ptr() as u32, string.len() as u32);
+            logErr(string.as_ptr() as u32, string.len() as u32, info.location().map_or(0, |loc| loc.line()));
         }
     }
     unsafe {
@@ -49,14 +51,19 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     }
 }
 
-fn handle_loader_error(message: &[u8]) -> usize {
-    log_err_internal(message);
+fn handle_loader_error(error: (&[u8], u32)) -> usize {
+    log_err_internal(error);
     // TODO: remove this call to panic? It's the last panic in the code,
     // and removing it will save about 500 bytes.
     panic!();
     //unsafe {
     //    core::arch::wasm32::unreachable();
     //}
+}
+
+struct InternalError<'a> {
+    message: &'a [u8],
+    line: usize
 }
 
 #[no_mangle]
@@ -68,8 +75,9 @@ pub unsafe extern fn load_json(offset: u32, length: u32) -> u32 {
     return load_json_internal(buffer).unwrap_or_else(handle_loader_error) as u32;
 }
 
-static INDEX_ERROR: &'static [u8; 45] = b"query: indexing error (this shouldn't happen)";
+static INDEX_ERROR: &'static [u8; 38] = b"indexing error (this shouldn't happen)";
 
+#[repr(packed(4))]
 struct Offsets {
     hash_table: usize,
     stroke_index: usize,
@@ -84,7 +92,7 @@ struct StrokeIndexEntry {
 }
 
 // loads a json array into our custom memory format.
-pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
+pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> {
     // in-place parsing turned out to not be possible in the end.
     // so, we're not going to do it.
     //
@@ -127,7 +135,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
 
     // INVARIANT: read_pos >= write_pos
 
-    skip_whitespace(buffer, &mut read_pos).or(Err(b"Parser error: no data found".as_ref()))?;
+    skip_whitespace(buffer, &mut read_pos).or(Err((b"Parser error: no data found".as_ref(), line!())))?;
     expect_char(buffer, &mut read_pos, b'{')?;
     
     // INVARIANT: read_pos >= write_pos + 1
@@ -147,7 +155,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
             let stroke = parse_stroke_fast(&buffer, &mut strokes_reader)?;
 
             // currently, we're only indexing single-stroke defs
-            let is_last_stroke = *buffer.get(strokes_reader).ok_or(index_error)? == b'"';
+            let is_last_stroke = *buffer.get(strokes_reader).ok_or((index_error, line!()))? == b'"';
             if is_last_stroke {
                 let first_byte = (stroke & 0xFF) as u8;
                 stroke_subindex_lengths[first_byte as usize] += 1;
@@ -169,7 +177,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
 
         skip_whitespace(buffer, &mut read_pos)?;
 
-        let byte = buffer.get(read_pos).ok_or(b"Parser error: data incomplete".as_ref())?;
+        let byte = buffer.get(read_pos).ok_or((b"Parser error: data incomplete".as_ref(), line!()))?;
         if *byte == b'}' {
             // reached file end
             read_pos += 1;
@@ -303,10 +311,10 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
         let definition_start = read_pos;
         
         // skip the strokes, we only care about the hash table for now
-        let mut byte = *buffer.get(read_pos).ok_or(index_error)?;
+        let mut byte = *buffer.get(read_pos).ok_or((index_error, line!()))?;
         read_pos += 1;
         while byte != b'"' {
-            byte = *buffer.get(read_pos).ok_or(index_error)?;
+            byte = *buffer.get(read_pos).ok_or((index_error, line!()))?;
             read_pos += 1;
         }
 
@@ -314,7 +322,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
         let string_start = read_pos;
         
         loop {
-            let byte = *buffer.get(read_pos).ok_or(index_error)?;
+            let byte = *buffer.get(read_pos).ok_or((index_error, line!()))?;
             read_pos += 1;
 
             if byte == 0 {
@@ -351,12 +359,17 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
     let mut definition_writer = 0;
     
     for bucket in hash_table.iter_mut() {
+        if *bucket == usize::max_value() {
+            // this bucket is empty
+            continue;
+        }
+        
         let mut definition_reader = *bucket;
 
         // we have to write the string first, so skip the strokes for now
         let strokes_start = definition_reader;
         loop {
-            let byte = *buffer.get(definition_reader).ok_or(index_error)?;
+            let byte = *buffer.get(definition_reader).ok_or((index_error, line!()))?;
             definition_reader += 1;
             if byte == b'"' {
                 break;
@@ -370,10 +383,10 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
 
         // write the string
         loop {
-            let byte = *buffer.get(definition_reader).ok_or(index_error)?;
+            let byte = *buffer.get(definition_reader).ok_or((index_error, line!()))?;
             definition_reader += 1;
 
-            *definitions.get_mut(definition_writer).ok_or(index_error)? = byte;
+            *definitions.get_mut(definition_writer).ok_or((index_error, line!()))? = byte;
             definition_writer += 1;
 
             // check after writing, so that the final null byte is copied
@@ -439,7 +452,7 @@ fn stroke_index_sortkey(entry: &StrokeIndexEntry) -> u16 {
     entry.last_two_bytes
 }
 
-fn add_to_hash_table(string: &[u8], mut value: usize, hash_table: &mut [usize], probe_counts: &mut [u32]) -> Result<(), &'static [u8]> {
+fn add_to_hash_table(string: &[u8], mut value: usize, hash_table: &mut [usize], probe_counts: &mut [u32]) -> Result<(), (&'static [u8], u32)> {
 
     let index_error = INDEX_ERROR.as_ref();
 
@@ -448,8 +461,8 @@ fn add_to_hash_table(string: &[u8], mut value: usize, hash_table: &mut [usize], 
     let mut probe_count = 0;
 
     loop {
-        let bucket = hash_table.get_mut(index).ok_or(index_error)?;
-        let stored_probe_count = probe_counts.get_mut(index).ok_or(index_error)?;
+        let bucket = hash_table.get_mut(index).ok_or((index_error, line!()))?;
+        let stored_probe_count = probe_counts.get_mut(index).ok_or((index_error, line!()))?;
         if *bucket == usize::max_value() {
             *bucket = value;
             *stored_probe_count = probe_count;
@@ -483,7 +496,7 @@ fn add_to_hash_table(string: &[u8], mut value: usize, hash_table: &mut [usize], 
 // otherwise, it is the number of bytes in the string plus one (for the null terminator).
 // if is_strokes is true, it will also ensure that the string is free of escape sequences (and thus quotes)
 // and terminate it with a double quote instead of NULL, since that is what parse_strokes needs.
-fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut usize, is_strokes: bool) -> Result<usize, &'a [u8]> {
+fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut usize, is_strokes: bool) -> Result<usize, (&'a [u8], u32)> {
 
     // EXPECTATION: read_pos >= write_pos
 
@@ -503,19 +516,19 @@ fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut us
     let mut escape_next = false;
 
     loop {
-        let byte = *buffer.get(*read_pos).ok_or(b"Parser error: data ended in the middle of string".as_ref())?;
+        let byte = *buffer.get(*read_pos).ok_or((b"Parser error: data ended in the middle of string".as_ref(), line!()))?;
         *read_pos += 1;
 
         if escape_next {
             if byte == b'"' || byte == b'\\' {
-                *buffer.get_mut(*write_pos).ok_or(INDEX_ERROR.as_ref())? = byte;
+                *buffer.get_mut(*write_pos).ok_or((INDEX_ERROR.as_ref(), line!()))? = byte;
                 *write_pos += 1;
                 final_size_guess_string += 1;
             }
             else {
                 // copy the escape sequence unchanged
-                *buffer.get_mut(*write_pos).ok_or(INDEX_ERROR.as_ref())? = b'\\';
-                *buffer.get_mut(*write_pos+1).ok_or(INDEX_ERROR.as_ref())? = byte;
+                *buffer.get_mut(*write_pos).ok_or((INDEX_ERROR.as_ref(), line!()))? = b'\\';
+                *buffer.get_mut(*write_pos+1).ok_or((INDEX_ERROR.as_ref(), line!()))? = byte;
                 *write_pos += 2;
                 final_size_guess_string += 2;
             }
@@ -530,12 +543,12 @@ fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut us
                 if is_strokes {
                     // the stroke parser can't handle those, so we have to make sure
                     // they won't be in there.
-                    return Err(b"Parser error: escape sequence found in stroke definition");
+                    return Err((b"Parser error: escape sequence found in stroke definition", line!()));
                 }
                 escape_next = true;
             }
             else {
-                *buffer.get_mut(*write_pos).ok_or(INDEX_ERROR.as_ref())? = byte;
+                *buffer.get_mut(*write_pos).ok_or((INDEX_ERROR.as_ref(), line!()))? = byte;
                 *write_pos += 1;
                 final_size_guess_string += 1;
             }
@@ -548,10 +561,10 @@ fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut us
     // INVARIANT: read_pos >= write_pos + 2
 
     if is_strokes {
-        *buffer.get_mut(*write_pos).ok_or(INDEX_ERROR.as_ref())? = b'"';
+        *buffer.get_mut(*write_pos).ok_or((INDEX_ERROR.as_ref(), line!()))? = b'"';
     }
     else {
-        *buffer.get_mut(*write_pos).ok_or(INDEX_ERROR.as_ref())? = 0;
+        *buffer.get_mut(*write_pos).ok_or((INDEX_ERROR.as_ref(), line!()))? = 0;
     }
     *write_pos += 1;
     // INVARIANT: read_pos >= write_pos + 1
@@ -565,7 +578,7 @@ fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut us
 }
 
 // TODO: figure out the lifetime for the error string here
-fn skip_whitespace<'a>(buffer: &[u8], pos: &mut usize) -> Result<(), &'a [u8]> {
+fn skip_whitespace<'a>(buffer: &[u8], pos: &mut usize) -> Result<(), (&'a [u8], u32)> {
     while let Some(&byte) = buffer.get(*pos) {
         if byte != b' '
             && byte != b'\t'
@@ -579,10 +592,10 @@ fn skip_whitespace<'a>(buffer: &[u8], pos: &mut usize) -> Result<(), &'a [u8]> {
 
         *pos += 1;
     }
-    return Err(b"Parser error: data incomplete");
+    return Err((b"Parser error: data incomplete", line!()));
 }
 
-fn expect_char<'a>(buffer: &[u8], pos: &mut usize, expected: u8) -> Result<(), &'a [u8]> {
+fn expect_char<'a>(buffer: &[u8], pos: &mut usize, expected: u8) -> Result<(), (&'a [u8], u32)> {
     if let Some(byte) = buffer.get(*pos) {
         if *byte == expected {
             *pos += 1;
@@ -600,8 +613,8 @@ fn expect_char<'a>(buffer: &[u8], pos: &mut usize, expected: u8) -> Result<(), &
             formatted_message[50] = ((*pos/100) % 10) as u8 + b'0';
             formatted_message[51] = ((*pos/10) % 10) as u8 + b'0';
             formatted_message[52] = ((*pos) % 10) as u8 + b'0';
-            log_err_internal(&formatted_message);
-            return Err(message);
+            log_err_internal((&formatted_message, line!()));
+            return Err((message, line!()));
         }
     }
     else {
@@ -609,7 +622,7 @@ fn expect_char<'a>(buffer: &[u8], pos: &mut usize, expected: u8) -> Result<(), &
         unsafe {
             *(message[24] as *mut u8) = expected;
         }
-        return Err(message);
+        return Err((message, line!()));
     }
 }
 
@@ -767,12 +780,12 @@ static PARSE_STROKE_TABLE: [u32; 128] = [
 // pos is a pointer, so the calling code can pick up
 // where we left off
 // TODO: what about zero-length strokes or other malformed input?
-fn parse_stroke_fast(buffer: &[u8], pos: &mut usize) -> Result<u32, &'static [u8]> {
+fn parse_stroke_fast(buffer: &[u8], pos: &mut usize) -> Result<u32, (&'static [u8], u32)> {
 
     let mut state = 0;
     let mut stroke = 0;
     while (state & (1 << 7)) == 0 {
-        let byte = *buffer.get(*pos).ok_or(b"Parser error: Reached end of data while reading stroke (in parse_stroke_fast)".as_ref())?;
+        let byte = *buffer.get(*pos).ok_or((b"Parser error: Reached end of data while reading stroke (in parse_stroke_fast)".as_ref(), line!()))?;
         *pos += 1;
 
         // first, cast up to u32, since we'll have to go up anyways.
@@ -826,18 +839,18 @@ pub unsafe extern fn query(offset: u32, length: u32, string_array_offset: u32, s
     }
 }
 
-fn query_internal(query: &[u8], strings: &[u8], strokes: &[u32]) -> Result<(), &'static [u8]> {
+fn query_internal(query: &[u8], strings: &[u8], strokes: &[u32]) -> Result<(), (&'static [u8], u32)> {
     let mut string_pos = 0;
     let mut stroke_pos = 0;
 
     let index_error = b"query: indexing error (this shouldn't happen)".as_ref();
 
     while string_pos < strings.len() {
-        let length = *strings.get(string_pos).ok_or(index_error)? as usize
-            | ((*strings.get(string_pos+1).ok_or(index_error)? as usize) << 8);
+        let length = *strings.get(string_pos).ok_or((index_error, line!()))? as usize
+            | ((*strings.get(string_pos+1).ok_or((index_error, line!()))? as usize) << 8);
         
         string_pos += 2;
-        let string = strings.get(string_pos..string_pos + length).ok_or(index_error)?;
+        let string = strings.get(string_pos..string_pos + length).ok_or((index_error, line!()))?;
         string_pos += length;
 
         let stroke_start = stroke_pos;
@@ -855,7 +868,7 @@ fn query_internal(query: &[u8], strings: &[u8], strokes: &[u32]) -> Result<(), &
             //    num2 /= 10;
             //}
 
-            let stroke = *strokes.get(stroke_pos).ok_or(index_error)?;
+            let stroke = *strokes.get(stroke_pos).ok_or((index_error, line!()))?;
             //if let Some(&stroke) = strokes.get(stroke_pos) {
             stroke_pos += 1;
             if (stroke >> 31) == 1 {
@@ -868,7 +881,7 @@ fn query_internal(query: &[u8], strings: &[u8], strokes: &[u32]) -> Result<(), &
             //}
         }
         let stroke_end = stroke_pos;
-        let stroke = strokes.get(stroke_start..stroke_end).ok_or(index_error)?;
+        let stroke = strokes.get(stroke_start..stroke_end).ok_or((index_error, line!()))?;
 
         if string == query {
             unsafe {
@@ -879,7 +892,7 @@ fn query_internal(query: &[u8], strings: &[u8], strokes: &[u32]) -> Result<(), &
     return Ok(());
 }
 
-fn find_stroke_internal(mut query_stroke: u32, strings: &[u8], strokes: &[u32]) -> Result<(), &'static [u8]> {
+fn find_stroke_internal(mut query_stroke: u32, strings: &[u8], strokes: &[u32]) -> Result<(), (&'static [u8], u32)> {
     
     let mut start_stroke_pos = 0;
     let mut string_pos = 0;
@@ -901,13 +914,13 @@ fn find_stroke_internal(mut query_stroke: u32, strings: &[u8], strokes: &[u32]) 
 
             // skip one forward in the strings array
             let length = (strings[string_pos] as usize) + ((strings[string_pos+1] as usize) << 8);
-            let string = strings.get(string_pos+2 .. string_pos+2+length).ok_or(b"index error".as_ref())?;
+            let string = strings.get(string_pos+2 .. string_pos+2+length).ok_or((b"index error".as_ref(), line!()))?;
             string_pos += 2 + length;
 
             // write out the definition
             if is_match == true {
                 if start_stroke_pos == stroke_pos { // count only single stroke defs
-                    let strokes = strokes.get(start_stroke_pos .. stroke_pos+1).ok_or(b"index error for strokes".as_ref())?;
+                    let strokes = strokes.get(start_stroke_pos .. stroke_pos+1).ok_or((b"index error for strokes".as_ref(), line!()))?;
                     unsafe {
                         yield_result(string.as_ptr() as u32, string.len() as u32, strokes.as_ptr() as u32, strokes.len() as u32);
                     }
