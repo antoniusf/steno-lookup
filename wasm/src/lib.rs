@@ -1,7 +1,6 @@
 #![no_std]
 //#![cfg_attr(not(test), no_std)]
 
-use core::convert::TryFrom;
 use core::mem::size_of;
 
 extern crate wyhash;
@@ -148,10 +147,10 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
             let stroke = parse_stroke_fast(&buffer, &mut strokes_reader)?;
 
             // currently, we're only indexing single-stroke defs
-            let is_last_stroke = buffer.get(strokes_reader).ok_or(index_error)? == b'"';
+            let is_last_stroke = *buffer.get(strokes_reader).ok_or(index_error)? == b'"';
             if is_last_stroke {
                 let first_byte = (stroke & 0xFF) as u8;
-                stroke_subindex_lengths[first_byte] += 1;
+                stroke_subindex_lengths[first_byte as usize] += 1;
             }
         }
 
@@ -180,18 +179,18 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
     }
 
     let hash_table_load_factor = 0.85;
-    let hash_table_length = (num_definitions / hash_table_load_factor) as u32;
-    let hash_table_size = hash_table_length * size_of<u32>();
+    let hash_table_length = (num_definitions as f64 / hash_table_load_factor) as usize;
+    let hash_table_size = hash_table_length * size_of::<usize>();
     let probe_count_array_length = hash_table_length;
-    let probe_count_array_size = probe_count_array_length * size_of<u32>();
+    let probe_count_array_size = probe_count_array_length * size_of::<u32>();
 
     // determine the length of the stroke index
     // stroke_index_layer2_lengths contains the length of each subarray,
     // so if we add them all up we get the total amount of space needed
     let stroke_subindices_length = stroke_subindex_lengths.iter().sum();
-    let stroke_subindices_size = stroke_index_length * size_of<StrokeIndexEntry>();
+    let stroke_subindices_size = stroke_subindices_length * size_of::<StrokeIndexEntry>();
     let stroke_prefix_lookup_length = 257;
-    let stroke_prefix_lookup_size = stroke_prefix_lookup_length * size_of<usize>();
+    let stroke_prefix_lookup_size = stroke_prefix_lookup_length * size_of::<usize>();
 
     // first pass is done.
     // second pass:
@@ -200,16 +199,12 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
 
     // I'm including a little bit extra, so we can store the lengths of the
     // stroke and string array, so the js can extract them easily.
-    // also, leave a bit more space in case we have to align.
-    // (we shouldn't, but see below.)
-    let u32_align = core::mem::align_of::<u32>();
-    
     let memory_needed = size_of::<Offsets>()
         + hash_table_size // requires align 4, maintains align 4
         + stroke_prefix_lookup_size // requires align 4, maintains align 4
         + stroke_subindices_size // requires align 2, maintains align 2
         + definitions_size // requires align 1, maintains align 1
-        + probe_count_array_size // this is a helper for hash table creation, it will be deleted when we are done
+        + probe_count_array_size; // this is a helper for hash table creation, it will be deleted when we are done
 
     let wasm_page_size = 65536;
     // this is just a rounding-up division for ints.
@@ -224,7 +219,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
     let stroke_subindices;
     let definitions;
     let probe_count_array;
-    let offset_info;
+    let mut offset_info;
 
     unsafe {
         // previously, i made sure that the beginning of the page was
@@ -236,11 +231,11 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
         // cleanly when we are done here.
 
         let mut offset = 0;
-        offset_info = &mut ((new_memory_start + offset) as *mut Offsets);
-        offset += size_of<Offsets>();
+        offset_info = &mut *((new_memory_start + offset) as *mut Offsets);
+        offset += size_of::<Offsets>();
 
         hash_table = core::slice::from_raw_parts_mut(
-            (new_memory_start + offset) as *mut u32,
+            (new_memory_start + offset) as *mut usize,
             hash_table_length
         );
 
@@ -286,7 +281,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
     // initialization
     // hash_table is a sparse structure, so
     // we'll need to initialize it.
-    for elem in hash_table {
+    for elem in hash_table.iter_mut() {
         *elem = usize::max_value();
     }
 
@@ -295,7 +290,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
     offset_info.hash_table = hash_table.as_ptr() as usize - new_memory_start;
     offset_info.stroke_index = stroke_prefix_lookup.as_ptr() as usize - new_memory_start;
     offset_info.definitions = definitions.as_ptr() as usize - new_memory_start;
-    offset_info.end = offset_info.definitions + definitions.len();
+    offset_info.end = (*offset_info).definitions + definitions.len();
 
     // second pass!
     // this is the end of the buffer, i.e. the index of the byte
@@ -325,7 +320,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
             if byte == 0 {
                 // (read_pos - 1) since we're ignoring the null byte
                 let string = &buffer[string_start .. (read_pos - 1)];
-                add_to_hash_table(string, definition_start as u32, &mut hash_table, &mut probe_count_array);
+                add_to_hash_table(string, definition_start, hash_table, probe_count_array)?;
                 break;
             }
         }
@@ -342,27 +337,27 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
     // are packed in order, all we have to do is a prefix sum to get the offset for each array.
     // NOTE that doing it this way means that unused subindices simply get a length of 0, but
     // still have a valid offset, which is kind of handy.
-    let accumulator = 0;
-    for index, length in stroke_subindex_lengths.enumerate() {
+    let mut accumulator = 0;
+    for (index, length) in stroke_subindex_lengths.iter().enumerate() {
         stroke_prefix_lookup[index] = accumulator;
         accumulator += length;
     }
     stroke_prefix_lookup[256] = accumulator;
 
     // also, store the current write position for each subarray, so we can push values
-    let stroke_subindex_write_positions = [0; 256];
+    let mut stroke_subindex_write_positions = [0; 256];
     
     let last_stroke_marker = 1 << 23;
     let mut definition_writer = 0;
     
-    for mut bucket in hash_table {
+    for bucket in hash_table.iter_mut() {
         let mut definition_reader = *bucket;
 
         // we have to write the string first, so skip the strokes for now
         let strokes_start = definition_reader;
         loop {
             let byte = *buffer.get(definition_reader).ok_or(index_error)?;
-            entry_reader += 1;
+            definition_reader += 1;
             if byte == b'"' {
                 break;
             }
@@ -375,7 +370,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
 
         // write the string
         loop {
-            let byte = *buffer.get(entry_reader).ok_or(index_error)?;
+            let byte = *buffer.get(definition_reader).ok_or(index_error)?;
             definition_reader += 1;
 
             *definitions.get_mut(definition_writer).ok_or(index_error)? = byte;
@@ -389,13 +384,13 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
         
         // read strokes
         let mut stroke_reader = strokes_start;
-        let is_first_stroke = true;
+        let mut is_first_stroke = true;
         while stroke_reader < strokes_end {
-            let stroke = parse_stroke_fast(&buffer, &mut stroke_reader);
+            let mut stroke = parse_stroke_fast(&buffer, &mut stroke_reader)?;
             let end_byte = buffer[stroke_reader];
             stroke_reader += 1;
 
-            if (end_byte == b'"') {
+            if end_byte == b'"' {
                 stroke |= last_stroke_marker;
 
                 if is_first_stroke {
@@ -406,10 +401,10 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
                     let subindex_offset = stroke_prefix_lookup[first_byte as usize];
                     let subindex_write_pos = &mut stroke_subindex_write_positions[first_byte as usize];
                     let index_entry_pos = subindex_offset + *subindex_write_pos;
-                    stroke_index[index_entry_pos] = StrokeIndexEntry {
+                    stroke_subindices[index_entry_pos] = StrokeIndexEntry {
                         last_two_bytes: last_bytes,
                         // this is the offset into the main entry array
-                        definition_offset: definition_offset
+                        definition_offset: definition_offset as usize
                     };
                     *subindex_write_pos += 1;
                 }
@@ -433,8 +428,8 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
         let offset = stroke_prefix_lookup[i];
         let end = stroke_prefix_lookup[i+1];
         // subindex.len() may be 0 if there is no subindex for this start byte
-        let subindex = &mut stroke_index[offset .. end];
-        subindex.sort_by_key(stroke_index_sortkey);
+        let subindex = &mut stroke_subindices[offset .. end];
+        subindex.sort_unstable_by_key(stroke_index_sortkey);
     }
 
     return Ok(new_memory_start);
@@ -444,17 +439,17 @@ fn stroke_index_sortkey(entry: &StrokeIndexEntry) -> u16 {
     entry.last_two_bytes
 }
 
-fn add_to_hash_table(string: &[u8], mut value: u32, hash_table: &mut [u32], probe_counts: &mut [u32]) -> Result<(), &'static [u8]> {
+fn add_to_hash_table(string: &[u8], mut value: usize, hash_table: &mut [usize], probe_counts: &mut [u32]) -> Result<(), &'static [u8]> {
 
     let index_error = INDEX_ERROR.as_ref();
 
-    let hash = wyhash(string);
-    let index = hash % wyhash.len();
-    let probe_count = 0;
+    let hash = wyhash(string, 1);
+    let mut index = (hash as usize) % hash_table.len();
+    let mut probe_count = 0;
 
     loop {
-        let mut bucket = hash_table.get_mut(index).ok_or(index_error)?;
-        let mut stored_probe_count = probe_counts.get_mut(index).ok_or(index_error)?;
+        let bucket = hash_table.get_mut(index).ok_or(index_error)?;
+        let stored_probe_count = probe_counts.get_mut(index).ok_or(index_error)?;
         if *bucket == 0 {
             *bucket = value;
             *stored_probe_count = probe_count;
@@ -475,10 +470,12 @@ fn add_to_hash_table(string: &[u8], mut value: u32, hash_table: &mut [u32], prob
         }
 
         index += 1;
-        if (index == wyhash.len()) {
+        if index == hash_table.len() {
             index = 0;
         }
     }
+
+    return Ok(());
 }
 
 // returns the length of this value in the final entry array, in bytes.
