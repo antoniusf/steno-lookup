@@ -364,7 +364,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, &[u8]> {
         }
         let strokes_end = definition_reader;
 
-        let definition_offset = definition_reader;
+        let definition_offset = definition_writer;
         // store the new definition offset in the hashmap
         *bucket = definition_offset;
 
@@ -450,7 +450,7 @@ fn add_to_hash_table(string: &[u8], mut value: usize, hash_table: &mut [usize], 
     loop {
         let bucket = hash_table.get_mut(index).ok_or(index_error)?;
         let stored_probe_count = probe_counts.get_mut(index).ok_or(index_error)?;
-        if *bucket == 0 {
+        if *bucket == usize::max_value() {
             *bucket = value;
             *stored_probe_count = probe_count;
             break;
