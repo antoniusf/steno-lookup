@@ -851,7 +851,7 @@ pub unsafe extern fn query(offset: u32, length: u32, data_offset: usize, find_st
     }
     else {
         let query_stroke = offset;
-        //find_stroke_internal(query_stroke, strings, strokes).unwrap_or_else(log_err_internal);
+        find_stroke_internal(query_stroke, stroke_prefix_lookup, stroke_subindices, definitions).unwrap_or_else(log_err_internal);
     }
 }
 
@@ -908,45 +908,36 @@ fn query_internal(query: &[u8], hashmap: &[usize], definitions: &[u8]) -> Result
     return Ok(());
 }
 
-fn find_stroke_internal(mut query_stroke: u32, strings: &[u8], strokes: &[u32]) -> Result<(), (&'static [u8], u32)> {
-    
-    let mut start_stroke_pos = 0;
-    let mut string_pos = 0;
+fn find_stroke_internal(mut query_stroke: u32, stroke_prefix_lookup: &[usize], stroke_subindices: &[StrokeIndexEntry], definitions: &[u8]) -> Result<(), (&'static [u8], u32)> {
 
-    // right now, this finds only ending strokes. (this includes single stroke defs)
-    // TODO: maybe we want a better method?
-    query_stroke |= 1 << 31;
+    let index_error = b"query: indexing error (this shouldn't happen)".as_ref();
 
-    let mut is_match = false;
-    
-    for stroke_pos in 0..strokes.len() {
-        let stroke = strokes[stroke_pos];
-        
-        if stroke == query_stroke {
-            is_match = true;
-        }
+    // currently, we're storing the strokes with the last stroke marker,
+    // so we'll have to add that in
+    query_stroke |= 1 << 23;
 
-        if (stroke >> 31) == 1 {
+    let first_byte = query_stroke & 0xFF;
+    let last_two_bytes = query_stroke >> 8;
 
-            // skip one forward in the strings array
-            let length = (strings[string_pos] as usize) + ((strings[string_pos+1] as usize) << 8);
-            let string = strings.get(string_pos+2 .. string_pos+2+length).ok_or((b"index error".as_ref(), line!()))?;
-            string_pos += 2 + length;
+    let subindex_start = stroke_prefix_lookup[first_byte as usize];
+    let subindex_end = stroke_prefix_lookup[first_byte as usize + 1];
+    let subindex = &stroke_subindices[subindex_start..subindex_end];
 
-            // write out the definition
-            if is_match == true {
-                if start_stroke_pos == stroke_pos { // count only single stroke defs
-                    let strokes = strokes.get(start_stroke_pos .. stroke_pos+1).ok_or((b"index error for strokes".as_ref(), line!()))?;
-                    unsafe {
-                        yield_result(string.as_ptr() as u32, string.len() as u32, strokes.as_ptr() as u32, strokes.len() as u32);
-                    }
-                }
-            }
+    let result = subindex.binary_search_by_key(&(last_two_bytes as u16), stroke_index_sortkey);
 
-            // this definition has ended
-            start_stroke_pos = stroke_pos + 1;
+    if let Ok(index) = result {
+        let entry = &subindex[index];
+        let definition_offset = entry.definition_offset;
 
-            is_match = false;
+        let string_start = definition_offset;
+        let string_end = *(&definitions[string_start..].iter().position(|&byte| byte == 0).ok_or((index_error, line!()))?) + string_start;
+        let string = &definitions[string_start..string_end];
+        let strokes_start = string_end + 1;
+        let strokes_end = *(&definitions[strokes_start..].chunks_exact(3).position(|stroke| (stroke[2] >> 7) == 1).ok_or((index_error, line!()))?) + 1 + strokes_start;
+        let strokes = &definitions[strokes_start..strokes_end];
+
+        unsafe {
+            yield_result(string.as_ptr() as u32, string.len() as u32, strokes.as_ptr() as u32, (strokes_end - strokes_start) as u32);
         }
     }
 

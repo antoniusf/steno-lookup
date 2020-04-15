@@ -160,6 +160,7 @@ export async function loadJson (json) {
 
 export async function doQuery(dictionary, query) {
 
+    const start = performance.now();
     if (!query_instance) {
 	console.log("Error: doQuery: there is currently now wasm module loaded for querying. Call prepare_instance_for_querying first.");
 	return;
@@ -178,7 +179,6 @@ export async function doQuery(dictionary, query) {
     // clear results in place
     // this is necessary since it is captured by the yield_results function, so we can't reassign
     query_info.results.splice(0, query_info.results.length);
-    const start = performance.now();
     instance.exports.query(query_info.query_start, encoded_query.length,
 			   query_info.data_start,
 			   0);
