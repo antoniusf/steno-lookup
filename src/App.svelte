@@ -58,7 +58,7 @@
         if (status == 'load-dict') {
             status = 'query';
         }
-        else if (status == 'query') {
+        else if (status == 'query' || status == 'find-stroke') {
             status = 'load-dict';
         }
     }
@@ -67,14 +67,14 @@
 <div id="container">
   <header>
     <h1>{titles[status]}</h1>
-    <button id="switch" on:click={e => { if (status == "find-stroke") { status = "query" } else { status = "find-stroke"} }} disabled={dictionary == null}>
-      {#if (status == "find-stroke")}
-        <img src="abc-icon.svg" alt="lookup steno"/>
-      {:else}
+    <button id="switch" on:click={e => { if (status == "query") { status = "find-stroke" } else { status = "query"} }} disabled={dictionary == null}>
+      {#if (status == "query")}
         <img src="STK-icon.svg" alt="lookup english"/>
+      {:else}
+        <img src="abc-icon.svg" alt="lookup steno"/>
       {/if}
     </button>
-    <button id="load" class={(status == 'load-dict') ? 'selected' : ''} on:click={toggleLoad}>
+    <button id="load" class={(status == 'load-dict') ? 'selected' : ''} on:click={toggleLoad} disabled={dictionary == null}>
       <img src="load-icon.svg" alt="load"/>
     </button>
   </header>

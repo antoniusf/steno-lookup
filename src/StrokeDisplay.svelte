@@ -46,7 +46,7 @@
       "S- T- P- H- star -F -P -L -T -D"
       "S- K- W- R- star -R -B -G -S -Z"
       ".  .  A- O-   .  -E -U  .  .  .";
-    grid-column-gap: 0.9%;
+    grid-column-gap: 1.0%;
     grid-row-gap: 2.0%;
     max-width: 70em;
     width: calc(100% - 1.6em);
