@@ -47,17 +47,17 @@
       "S- K- W- R- star -R -B -G -S -Z"
       ".  .  A- O-   .  -E -U  .  .  .";
     grid-column-gap: 0.9%;
-    grid-row-gap: 2.5%;
+    grid-row-gap: 2.0%;
     max-width: 70em;
-    width: calc(100% - 2em);
-    margin: 1em 1em 3em;
+    width: calc(100% - 1.6em);
+    margin: 1em 0.8em 10%;
   }
   
   button {
     width: 100%;
     padding: 0;
     margin: 0;
-    padding-bottom: 120%;
+    padding-bottom: 110%;
     background-color: #aaa;
     border: none;
     color: white;
@@ -67,7 +67,7 @@
 
   button#number {
     grid-area: number;
-    padding-bottom: 2%;
+    padding-bottom: 4%;
   }
 
   button.active {

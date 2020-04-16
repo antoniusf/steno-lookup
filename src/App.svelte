@@ -49,7 +49,8 @@
     let dictionary = null;
     let titles = {
         "load-dict": "Load",
-        "query": "Lookup"
+        "query": "Lookup",
+	"find-stroke": "Find Stroke"
     }
     
 

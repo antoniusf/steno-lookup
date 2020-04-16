@@ -44,6 +44,16 @@
     }
 </script>
 
+<style>
+  input[type="text"] {
+    width: 60%;
+    margin: 0px auto 0.5em;
+    min-width: 0;
+    border: 1px solid #777;
+    padding: 0.3em 0.6em;
+  }
+</style>
+
 <StrokeDisplay bind:stroke on:strokeChanged={onStrokeChanged}/>
 
 <input type="text" on:input={onInput} bind:this={input_element} />
