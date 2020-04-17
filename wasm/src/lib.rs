@@ -35,17 +35,17 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    if let Some(string) = info.payload().downcast_ref::<&str>() {
-        unsafe {
-            logErr(string.as_ptr() as u32, string.len() as u32, info.location().map_or(0, |loc| loc.line()));
-        }
-    }
-    else {
-        let string = "Panic occured, but we didn't get a usable payload.";
-        unsafe {
-            logErr(string.as_ptr() as u32, string.len() as u32, info.location().map_or(0, |loc| loc.line()));
-        }
-    }
+    //if let Some(string) = info.payload().downcast_ref::<&str>() {
+    //    unsafe {
+    //        logErr(string.as_ptr() as u32, string.len() as u32, info.location().map_or(0, |loc| loc.line()));
+    //    }
+    //}
+    //else {
+    //    let string = "Panic occured, but we didn't get a usable payload.";
+    //    unsafe {
+    //        logErr(string.as_ptr() as u32, string.len() as u32, info.location().map_or(0, |loc| loc.line()));
+    //    }
+    //}
     unsafe {
         core::arch::wasm32::unreachable();
     }
