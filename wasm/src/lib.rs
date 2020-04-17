@@ -86,10 +86,22 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> 
     // note: this is not a full-fledged json parser. it is specifically
     // designed for reading plover dicionaries, and it will fail when
     // passed otherwise valid json that does not fit this schema.
+    //
+    // the binary format is basically just a '"'-terminated strokes
+    // list, followed by a 0-terminated string, followed by the next
+    // entry. the conversion to the binary format will happen
+    // in-place, which is not a problem, since the binary format
+    // is shorter than the original data format. we'll read the
+    // original data from the read pointer, convert it, then write
+    // it out to the write pointer.
+    //
+    // unfortunately, we can't use an iterator for all this since we
+    // need to be able to write the slice while doing this.
 
     let mut read_pos = 0;
     let mut write_pos = 0;
 
+    // size of the definitions array in bytes
     let mut definitions_size = 0;
     let mut num_definitions = 0;
 
@@ -103,9 +115,6 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> 
     // second pass we can place the strokes in the right place
     // directly.
     let mut stroke_subindex_lengths = [0; 256];
-
-    // unfortunately, we can't use an iterator for all this since we
-    // need to be able to write the slice while doing this.
 
     // INVARIANT: read_pos >= write_pos
 
@@ -160,6 +169,10 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> 
         expect_char(buffer, &mut read_pos, b',')?;
     }
 
+    // first pass is done.
+    // we can now compute the sizes for all of the necessary data structures
+    // and allocate them.
+
     let hash_table_load_factor = 0.85;
     let hash_table_length = (num_definitions as f64 / hash_table_load_factor) as usize;
     let hash_table_size = hash_table_length * size_of::<usize>();
@@ -167,17 +180,12 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> 
     let probe_count_array_size = probe_count_array_length * size_of::<u32>();
 
     // determine the length of the stroke index
-    // stroke_index_layer2_lengths contains the length of each subarray,
+    // stroke_index_subindex_lengths contains the length of each subindex,
     // so if we add them all up we get the total amount of space needed
     let stroke_subindices_length = stroke_subindex_lengths.iter().sum();
     let stroke_subindices_size = stroke_subindices_length * size_of::<StrokeIndexEntry>();
     let stroke_prefix_lookup_length = 257;
     let stroke_prefix_lookup_size = stroke_prefix_lookup_length * size_of::<usize>();
-
-    // first pass is done.
-    // second pass:
-    //   fill up the hash table. then, we'll copy the strings
-    //   out in the correct order. (as they are in the hash table)
 
     let memory_needed = size_of::<Offsets>()
         + hash_table_size // requires align 4, maintains align 4
@@ -272,7 +280,10 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> 
     offset_info.definitions = definitions.as_ptr() as usize - new_memory_start;
     offset_info.end = (*offset_info).definitions + definitions.len();
 
-    // second pass!
+    // second pass:
+    //   fill up the hash table. then, we'll copy the strings
+    //   out in the correct order. (as they are in the hash table)
+
     // this is the end of the buffer, i.e. the index of the byte
     // one after the last one we wrote.
     let buffer_end = write_pos;
@@ -313,7 +324,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> 
     // from the stroke index, so we'll write that in the same step
 
     // determine layout of the stroke index and write it into the stroke prefix lookup table
-    // stroke_index_layer2_lengths contains the length of each subarray. since the subarrays
+    // stroke_subindex_lengths contains the length of each subindex. since the subindices
     // are packed in order, all we have to do is a prefix sum to get the offset for each array.
     // NOTE that doing it this way means that unused subindices simply get a length of 0, but
     // still have a valid offset, which is kind of handy.
@@ -405,10 +416,11 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> 
         }
     }
 
-    // fourth pass: sort the level2 stroke index arrays, so we can
-    // binary search through them. TODO: store them as parallel arrays
-    // for stroke bytes + definition pointers, so all reads are aligned
-    // and fast?
+    // fourth pass: sort the subindices, so we can binary search
+    // through them. TODO: store them as parallel arrays for stroke
+    // bytes + definition pointers, so all reads are aligned and fast?
+    // (note though that we are already at two-byte alignment and
+    //  last_two_strokes, which is what we sort by, is a two-byte value)
     for i in 0..256 {
         let offset = stroke_prefix_lookup[i];
         let end = stroke_prefix_lookup[i+1];
@@ -461,7 +473,7 @@ fn add_to_hash_table(string: &[u8], mut value: usize, hash_table: &mut [usize], 
     return Ok(());
 }
 
-// returns the length of this value in the final entry array, in bytes.
+// returns the length of this value in the final entry array, in bytes. (NOT in the rewritten string!)
 // if is_strokes is true, this is the number of forward slashes plus one, times three. (three bytes per stroke)
 // otherwise, it is the number of bytes in the string plus one (for the null terminator).
 // if is_strokes is true, it will also ensure that the string is free of escape sequences (and thus quotes)
@@ -547,8 +559,7 @@ fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut us
     }
 }
 
-// TODO: figure out the lifetime for the error string here
-fn skip_whitespace<'a>(buffer: &[u8], pos: &mut usize) -> Result<(), (&'a [u8], u32)> {
+fn skip_whitespace(buffer: &[u8], pos: &mut usize) -> Result<(), (&'static [u8], u32)> {
     while let Some(&byte) = buffer.get(*pos) {
         if byte != b' '
             && byte != b'\t'
@@ -565,7 +576,7 @@ fn skip_whitespace<'a>(buffer: &[u8], pos: &mut usize) -> Result<(), (&'a [u8], 
     return Err((b"Parser error: data incomplete", line!()));
 }
 
-fn expect_char<'a>(buffer: &[u8], pos: &mut usize, expected: u8) -> Result<(), (&'a [u8], u32)> {
+fn expect_char(buffer: &[u8], pos: &mut usize, expected: u8) -> Result<(), (&'static [u8], u32)> {
     if let Some(byte) = buffer.get(*pos) {
         if *byte == expected {
             *pos += 1;
@@ -574,24 +585,20 @@ fn expect_char<'a>(buffer: &[u8], pos: &mut usize, expected: u8) -> Result<(), (
         else {
             // todo: maybe find a more elegant way to statically determine
             // the interpolation positions?
-            let message = b"Parser error: expected '$', but got '$' (at char     )";
+            let message = b"Parser error: expected '$', but got '$'";
             // copy this onto the stack (i think) so we can format it.
             let mut formatted_message = *message;
             formatted_message[24] = expected;
             formatted_message[37] = *byte;
-            formatted_message[49] = (*pos/1000) as u8 + b'0';
-            formatted_message[50] = ((*pos/100) % 10) as u8 + b'0';
-            formatted_message[51] = ((*pos/10) % 10) as u8 + b'0';
-            formatted_message[52] = ((*pos) % 10) as u8 + b'0';
             log_err_internal((&formatted_message, line!()));
             return Err((message, line!()));
         }
     }
     else {
         let message = b"Parser error: expected '$', but hit the end of data";
-        unsafe {
-            *(message[24] as *mut u8) = expected;
-        }
+        let mut formatted_message = *message;
+        formatted_message[24] = expected;
+        log_err_internal((&formatted_message, line!()));
         return Err((message, line!()));
     }
 }
