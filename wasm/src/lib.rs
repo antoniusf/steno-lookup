@@ -906,7 +906,7 @@ fn find_stroke_internal(mut query_stroke: u32, stroke_prefix_lookup: &[usize], s
         let string_end = *(&definitions[string_start..].iter().position(|&byte| byte == 0).unwrap()) + string_start;
         let string = &definitions[string_start..string_end];
         let strokes_start = string_end + 1;
-        let strokes_end = *(&definitions[strokes_start..].chunks_exact(3).position(|stroke| (stroke[2] >> 7) == 1).unwrap()) + 1 + strokes_start;
+        let strokes_end = *(&definitions[strokes_start..].chunks_exact(3).position(|stroke| (stroke[2] >> 7) == 1).unwrap()) * 3 + 3 + strokes_start;
         let strokes = &definitions[strokes_start..strokes_end];
 
         unsafe {
