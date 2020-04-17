@@ -631,12 +631,12 @@ static PARSE_STROKE_TABLE: [u32; 128] = [
     RIGHT_BANK, // -
     IGNORE, // .
     STOP, // /
-    NUMBER | (1 << 9), // 0
+    NUMBER | (1 << 9) | RIGHT_BANK, // 0
     NUMBER | (1 << 1), // 1
     NUMBER | (1 << 2), // 2
     NUMBER | (1 << 4), // 3
     NUMBER | (1 << 6), // 4
-    NUMBER | (1 << 8), // 5
+    NUMBER | (1 << 8) | RIGHT_BANK, // 5
     NUMBER | (1 << 13), // 6
     NUMBER | (1 << 15), // 7
     NUMBER | (1 << 17), // 8
