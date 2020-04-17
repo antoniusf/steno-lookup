@@ -155,7 +155,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> 
             let stroke = parse_stroke_fast(&buffer, &mut strokes_reader)?;
 
             // currently, we're only indexing single-stroke defs
-            let is_last_stroke = *buffer.get(strokes_reader).ok_or((index_error, line!()))? == b'"';
+            let is_last_stroke = buffer[strokes_reader] == b'"';
             if is_last_stroke {
                 let first_byte = (stroke & 0xFF) as u8;
                 stroke_subindex_lengths[first_byte as usize] += 1;
@@ -311,10 +311,10 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> 
         let definition_start = read_pos;
         
         // skip the strokes, we only care about the hash table for now
-        let mut byte = *buffer.get(read_pos).ok_or((index_error, line!()))?;
+        let mut byte = buffer[read_pos];
         read_pos += 1;
         while byte != b'"' {
-            byte = *buffer.get(read_pos).ok_or((index_error, line!()))?;
+            byte = buffer[read_pos];
             read_pos += 1;
         }
 
@@ -322,7 +322,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> 
         let string_start = read_pos;
         
         loop {
-            let byte = *buffer.get(read_pos).ok_or((index_error, line!()))?;
+            let byte = buffer[read_pos];
             read_pos += 1;
 
             if byte == 0 {
@@ -369,7 +369,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> 
         // we have to write the string first, so skip the strokes for now
         let strokes_start = definition_reader;
         loop {
-            let byte = *buffer.get(definition_reader).ok_or((index_error, line!()))?;
+            let byte = buffer[definition_reader];
             definition_reader += 1;
             if byte == b'"' {
                 break;
@@ -383,10 +383,10 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> 
 
         // write the string
         loop {
-            let byte = *buffer.get(definition_reader).ok_or((index_error, line!()))?;
+            let byte = buffer[definition_reader];
             definition_reader += 1;
 
-            *definitions.get_mut(definition_writer).ok_or((index_error, line!()))? = byte;
+            definitions[definition_writer] = byte;
             definition_writer += 1;
 
             // check after writing, so that the final null byte is copied
@@ -461,8 +461,8 @@ fn add_to_hash_table(string: &[u8], mut value: usize, hash_table: &mut [usize], 
     let mut probe_count = 0;
 
     loop {
-        let bucket = hash_table.get_mut(index).ok_or((index_error, line!()))?;
-        let stored_probe_count = probe_counts.get_mut(index).ok_or((index_error, line!()))?;
+        let bucket = &mut hash_table[index];
+        let stored_probe_count = &mut probe_counts[index];
         if *bucket == usize::max_value() {
             *bucket = value;
             *stored_probe_count = probe_count;
@@ -521,14 +521,14 @@ fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut us
 
         if escape_next {
             if byte == b'"' || byte == b'\\' {
-                *buffer.get_mut(*write_pos).ok_or((INDEX_ERROR.as_ref(), line!()))? = byte;
+                buffer[*write_pos] = byte;
                 *write_pos += 1;
                 final_size_guess_string += 1;
             }
             else {
                 // copy the escape sequence unchanged
-                *buffer.get_mut(*write_pos).ok_or((INDEX_ERROR.as_ref(), line!()))? = b'\\';
-                *buffer.get_mut(*write_pos+1).ok_or((INDEX_ERROR.as_ref(), line!()))? = byte;
+                buffer[*write_pos] = b'\\';
+                buffer[*write_pos+1] = byte;
                 *write_pos += 2;
                 final_size_guess_string += 2;
             }
@@ -548,7 +548,7 @@ fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut us
                 escape_next = true;
             }
             else {
-                *buffer.get_mut(*write_pos).ok_or((INDEX_ERROR.as_ref(), line!()))? = byte;
+                buffer[*write_pos] = byte;
                 *write_pos += 1;
                 final_size_guess_string += 1;
             }
@@ -561,10 +561,10 @@ fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut us
     // INVARIANT: read_pos >= write_pos + 2
 
     if is_strokes {
-        *buffer.get_mut(*write_pos).ok_or((INDEX_ERROR.as_ref(), line!()))? = b'"';
+        buffer[*write_pos] = b'"';
     }
     else {
-        *buffer.get_mut(*write_pos).ok_or((INDEX_ERROR.as_ref(), line!()))? = 0;
+        buffer[*write_pos] = 0;
     }
     *write_pos += 1;
     // INVARIANT: read_pos >= write_pos + 1
@@ -878,9 +878,9 @@ fn query_internal(query: &[u8], hashmap: &[usize], definitions: &[u8]) -> Result
             // read strokes
             loop {
 
-                let stroke1 = *definitions.get(stroke_pos).ok_or((index_error, line!()))? as u32;
-                let stroke2 = *definitions.get(stroke_pos+1).ok_or((index_error, line!()))? as u32;
-                let stroke3 = *definitions.get(stroke_pos+2).ok_or((index_error, line!()))? as u32;
+                let stroke1 = definitions[stroke_pos] as u32;
+                let stroke2 = definitions[stroke_pos+1] as u32;
+                let stroke3 = definitions[stroke_pos+2] as u32;
                 stroke_pos += 3;
 
                 let stroke = stroke1 | (stroke2 << 8) | (stroke3 << 16);
@@ -889,7 +889,7 @@ fn query_internal(query: &[u8], hashmap: &[usize], definitions: &[u8]) -> Result
                 }
             }
             let strokes_end = stroke_pos;
-            let strokes = definitions.get(strokes_start..strokes_end).ok_or((index_error, line!()))?;
+            let strokes = &definitions[strokes_start..strokes_end];
 
             unsafe {
                 yield_result(string.as_ptr() as u32, string.len() as u32, strokes.as_ptr() as u32, (strokes_end - strokes_start) as u32);
