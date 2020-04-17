@@ -17,7 +17,7 @@ fn log_err_internal(message: (&[u8], u32)) {
 }
 
 #[panic_handler]
-fn panic(info: &core::panic::PanicInfo) -> ! {
+fn panic(_info: &core::panic::PanicInfo) -> ! {
     //if let Some(string) = info.payload().downcast_ref::<&str>() {
     //    unsafe {
     //        logErr(string.as_ptr() as u32, string.len() as u32, info.location().map_or(0, |loc| loc.line()));
@@ -36,12 +36,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 
 fn handle_loader_error(error: (&[u8], u32)) -> usize {
     log_err_internal(error);
-    // TODO: remove this call to panic? It's the last panic in the code,
-    // and removing it will save about 500 bytes.
     panic!();
-    //unsafe {
-    //    core::arch::wasm32::unreachable();
-    //}
 }
 
 struct InternalError<'a> {
@@ -57,8 +52,6 @@ pub unsafe extern fn load_json(offset: u32, length: u32) -> u32 {
     );
     return load_json_internal(buffer).unwrap_or_else(handle_loader_error) as u32;
 }
-
-static INDEX_ERROR: &'static [u8; 38] = b"indexing error (this shouldn't happen)";
 
 #[repr(packed(4))]
 struct Offsets {
@@ -82,8 +75,6 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> 
     // to get rid of the extra memory, the js will have to copy out
     // the important data, dump the wasm instance, and hope that the
     // memory will get gc'd.
-
-    let index_error = INDEX_ERROR.as_ref();
 
     // step 1:
     // pre-parse the json.
@@ -188,8 +179,6 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> 
     //   fill up the hash table. then, we'll copy the strings
     //   out in the correct order. (as they are in the hash table)
 
-    // I'm including a little bit extra, so we can store the lengths of the
-    // stroke and string array, so the js can extract them easily.
     let memory_needed = size_of::<Offsets>()
         + hash_table_size // requires align 4, maintains align 4
         + stroke_prefix_lookup_size // requires align 4, maintains align 4
@@ -436,8 +425,6 @@ fn stroke_index_sortkey(entry: &StrokeIndexEntry) -> u16 {
 }
 
 fn add_to_hash_table(string: &[u8], mut value: usize, hash_table: &mut [usize], probe_counts: &mut [u32]) -> Result<(), (&'static [u8], u32)> {
-
-    let index_error = INDEX_ERROR.as_ref();
 
     let hash = wyhash(string, 1);
     let mut index = (hash as usize) % hash_table.len();
@@ -840,8 +827,6 @@ pub unsafe extern fn query(offset: u32, length: u32, data_offset: usize, find_st
 
 fn query_internal(query: &[u8], hashmap: &[usize], definitions: &[u8]) -> Result<(), (&'static [u8], u32)> {
 
-    let index_error = b"query: indexing error (this shouldn't happen)".as_ref();
-
     let hash = wyhash(query, 1);
     let mut index = (hash as usize) % hashmap.len();
 
@@ -893,8 +878,6 @@ fn query_internal(query: &[u8], hashmap: &[usize], definitions: &[u8]) -> Result
 
 fn find_stroke_internal(mut query_stroke: u32, stroke_prefix_lookup: &[usize], stroke_subindices: &[StrokeIndexEntry], definitions: &[u8]) -> Result<(), (&'static [u8], u32)> {
 
-    let index_error = b"query: indexing error (this shouldn't happen)".as_ref();
-
     // currently, we're storing the strokes with the last stroke marker,
     // so we'll have to add that in
     query_stroke |= 1 << 23;
@@ -913,10 +896,10 @@ fn find_stroke_internal(mut query_stroke: u32, stroke_prefix_lookup: &[usize], s
         let definition_offset = entry.definition_offset;
 
         let string_start = definition_offset;
-        let string_end = *(&definitions[string_start..].iter().position(|&byte| byte == 0).ok_or((index_error, line!()))?) + string_start;
+        let string_end = *(&definitions[string_start..].iter().position(|&byte| byte == 0).unwrap()) + string_start;
         let string = &definitions[string_start..string_end];
         let strokes_start = string_end + 1;
-        let strokes_end = *(&definitions[strokes_start..].chunks_exact(3).position(|stroke| (stroke[2] >> 7) == 1).ok_or((index_error, line!()))?) + 1 + strokes_start;
+        let strokes_end = *(&definitions[strokes_start..].chunks_exact(3).position(|stroke| (stroke[2] >> 7) == 1).unwrap()) + 1 + strokes_start;
         let strokes = &definitions[strokes_start..strokes_end];
 
         unsafe {
@@ -930,32 +913,19 @@ fn find_stroke_internal(mut query_stroke: u32, stroke_prefix_lookup: &[usize], s
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::prelude::*;
     
-    //#[test]
-    //fn test_parse_stroke() {
-    //    // TODO: I've just precomputed these values and checked that they are correct.
-    //    // but there should be a better way.
-    //    let mut pos = 0;
-    //    assert_eq!(parse_stroke_fast(b"KPWHREPLGS/", &mut pos), 1476856);
-    //    pos = 0;
-    //    assert_eq!(parse_stroke_fast(b"K-FRBL/", &mut pos), 221192);
-    //    pos = 0;
-    //    assert_eq!(parse_stroke_fast(b"#AO/", &mut pos), 769);
-    //    pos = 0;
-    //    assert_eq!(parse_stroke_fast(b"50/", &mut pos), 769);
-    //    pos = 0;
-    //}
-
     #[test]
-    fn test_parse_stanmain() -> std::io::Result<()> {
-        println!("Hello world!");
-        let mut file = std::fs::File::open("/home/antonius/stanmain.json").or_else(|err| {
-            println!("{:?}", err);
-            return Err(err);
-        })?;
-        //let mut data = Vec::new();
-        //file.read_to_end(&mut data).unwrap();
-        return Ok(());
+    fn test_parse_stroke() {
+        // TODO: I've just precomputed these values and checked that they are correct.
+        // but there should be a better way.
+        let mut pos = 0;
+        assert_eq!(parse_stroke_fast(b"KPWHREPLGS/", &mut pos), 1476856);
+        pos = 0;
+        assert_eq!(parse_stroke_fast(b"K-FRBL/", &mut pos), 221192);
+        pos = 0;
+        assert_eq!(parse_stroke_fast(b"#AO/", &mut pos), 769);
+        pos = 0;
+        assert_eq!(parse_stroke_fast(b"50/", &mut pos), 769);
+        pos = 0;
     }
 }
