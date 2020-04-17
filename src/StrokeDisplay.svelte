@@ -13,85 +13,7 @@
     export let stroke = 0;
 
     const dispatch = createEventDispatcher();
-
-    //$: stroke = keylistToStroke(
-    //    Object.entries(state)
-    //	    .filter(([key, state]) => state) // use only keys where state is true
-    //	    .map(([key, state]) => (key == "star")? "*" : key) // replace "star" with "*"
-    //   );
     $: state = strokeToKeydict(stroke);
-
-    let active_touches = {};
-
-    function touch_start(event) {
-	console.log(event.touches.length);
-	for (let i = 0; i < event.touches.length; i++) {
-	    let touch = event.touches[i];
-	    if (!active_touches.hasOwnProperty(touch.identifier)){
-		let button = replace_map[event.target.id] || event.target.id;
-		state[button] ^= true;
-		let mode = state[button];
-		active_touches[touch.identifier] = { x: touch.clientX, y: touch.clientY, mode: mode };
-	    }
-	}
-	stroke_changed();
-    }
-
-    function touch_move(event) {
-	let touches = event.changedTouches;
-	let changed = false;
-	for (let i = 0; i < touches.length; i++) {
-	    let touch = touches[i];
-	    let old_touch = active_touches[touch.identifier];
-	    if (!old_touch) {
-		continue;
-	    }
-
-	    // estimate width of a button by window width
-	    // there's ten buttons, but i'm including a bit of extra buffer
-	    let button_width = window.innerWidth / 20;
-	    let delta_x = touch.clientX - old_touch.x;
-	    let delta_y = touch.clientY - old_touch.y;
-	    let delta = Math.sqrt(delta_x ** 2 + delta_y ** 2);
-
-	    let move_x = delta_x / delta * button_width;
-	    let move_y = delta_y / delta * button_width;
-
-	    let step = 0;
-	    while (delta > 0) {
-		// draw a straight line between both points and then subdivide it
-		// this way we'll make sure that we hit all in-between buttons
-		// we're also going backwards, since (old_touch.x, old_touch.y) will have
-		// already been handled
-		let x = touch.clientX - move_x * step;
-		let y = touch.clientY - move_y * step;
-		let target = document.elementFromPoint(x, y);
-		let button = replace_map[target.id] || target.id;
-		if (state.hasOwnProperty(button)) {
-		    if (state[button] != old_touch.mode) {
-			state[button] = old_touch.mode;
-			changed = true;
-		    }
-		}
-		delta -= button_width;
-		step += 1;
-	    }
-
-	    old_touch.x = touch.clientX;
-	    old_touch.y = touch.clientY;
-	}
-
-	if (changed) {
-	    stroke_changed();
-	}
-    }
-
-    function touch_end(event) {
-	let touches = event.changedTouches;
-	for (let i = 0; i < touches.length; i++) {
-	    delete active_touches[touches[i].identifier];
-	}
-    }
 
     function stroke_changed() {
 	dispatch('strokeChanged', {
@@ -103,18 +25,105 @@
 	});
     }
 
-    function handleClick(event) {
+    // touch handling
+    let active_touches = {};
+
+    function touch_start(event) {
+
+	let touches = event.touches;
+	for (let i = 0; i < event.touches.length; i++) {
+	    let touch = event.touches[i];
+	    if (!active_touches.hasOwnProperty(touch.identifier)){
+		let button = replace_map[event.target.id] || event.target.id;
+		state[button] ^= true;
+
+		// to avoid confusion, each swipe gesture can either only turn
+		// buttons on or only turn buttons off. so, after toggling the
+		// first button, we store it's state so we can set all other
+		// buttons this touch hits to the same state.
+		let mode = state[button];
+		console.log(`new touch with mode ${mode}`);
+		active_touches[touch.identifier] = { x: touch.clientX, y: touch.clientY, mode: mode };
+	    }
+	}
+	stroke_changed();
+    }
+
+    function touch_move(event) {
+
+	let touches = event.changedTouches;
+	let changed = false;
+
+	for (let i = 0; i < touches.length; i++) {
+
+	    let touch = touches[i];
+	    let old_touch = active_touches[touch.identifier];
+	    if (!old_touch) {
+		continue;
+	    }
+
+	    // if the swipe is very fast, we may not get
+	    // an intermediate event for each button that it
+	    // crosses. so what we do is define a maximum
+	    // step width and then subdivide the swipe by
+	    // placing steps along an imaginary line between
+	    // the start and stop of the swipe.
+
+	    // estimate width of a button by window width
+	    // there's ten buttons, but i'm including a bit of extra buffer
+	    let step_size = window.innerWidth / 20;
+	    let delta_x = touch.clientX - old_touch.x;
+	    let delta_y = touch.clientY - old_touch.y;
+	    let delta = Math.sqrt(delta_x ** 2 + delta_y ** 2);
+
+	    let step_x = delta_x / delta * step_size;
+	    let step_y = delta_y / delta * step_size;
+
+	    while (delta > 0) {
+		// start at the end and go backwards; the starting point
+		// should have been handled in the previous event handler.
+		let x = old_touch.x + delta_x;
+		let y = old_touch.y + delta_y;
+
+		delta -= step_size;
+		delta_x -= step_x;
+		delta_y -= step_y;
+		
+		let target = document.elementFromPoint(x, y);
+		let button = replace_map[target.id] || target.id;
+
+		if (state.hasOwnProperty(button)) {
+		    if (state[button] != old_touch.mode) {
+			state[button] = old_touch.mode;
+			changed = true;
+		    }
+		}
+	    }
+
+	    // update the stored touch object
+	    old_touch.x = touch.clientX;
+	    old_touch.y = touch.clientY;
+	}
+
+	if (changed) {
+	    stroke_changed();
+	}
+    }
+
+    function touch_end(event) {
+	// TODO: do we have to handle this as a move as well?
+	let touches = event.changedTouches;
+	for (let i = 0; i < touches.length; i++) {
+	    delete active_touches[touches[i].identifier];
+	}
+    }
+
+    function handle_click(event) {
 	// toggle the button's state
 	const button = replace_map[event.target.id] || event.target.id;
 	state[button] ^= true;
 
-	dispatch('strokeChanged', {
-	    stroke: keylistToStroke(
-		Object.entries(state)
-    		    .filter(([key, state]) => state) // use only keys where state is true
-                    .map(([key, state]) => key)
-	    )
-	});
+	stroke_changed();
     }
 </script>
 
@@ -287,39 +296,221 @@
 </style>
 
 <div id="steno-keyboard">
-  <button id="number" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["#"]}></button>
-  <button id="S-" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["S-"]} class="long-key"></button>
-  <button id="T-" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["T-"]} class="top-row"></button>
-  <button id="K-" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["K-"]} class="bottom-row"></button>
-  <button id="P-" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["P-"]} class="top-row"></button>
-  <button id="W-" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["W-"]} class="bottom-row"></button>
-  <button id="H-" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["H-"]} class="top-row"></button>
-  <button id="R-" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["R-"]} class="bottom-row"></button>
-  <div id="A-" class="vowel-container">
-    <!--note: the button ids don't have the dash, to distinguish them from the div ids!
-              (and also to make interfacing with the stroke library easier, where the vowels
-               don't have dashes either)
-      -->
-    <button id="A" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["A"]} class="left-vowel"></button>
-  </div>
-  <div id="O-" class="vowel-container">
-    <button id="O" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["O"]} class="left-vowel"></button>
-  </div>
-  <button id="star" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["*"]} class="long-key"></button>
-  <div id="-E" class="vowel-container">
-    <button id="E" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["E"]} class="right-vowel"></button>
-  </div>
-  <div id="-U" class="vowel-container">
-    <button id="U" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["U"]} class="right-vowel"></button>
-  </div>
-  <button id="-F" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["-F"]} class="top-row"></button>
-  <button id="-R" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["-R"]} class="bottom-row"></button>
-  <button id="-P" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["-P"]} class="top-row"></button>
-  <button id="-B" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["-B"]} class="bottom-row"></button>
-  <button id="-L" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["-L"]} class="top-row"></button>
-  <button id="-G" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["-G"]} class="bottom-row"></button>
-  <button id="-T" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["-T"]} class="top-row"></button>
-  <button id="-S" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["-S"]} class="bottom-row"></button>
-  <button id="-D" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["-D"]} class="top-row"></button>
-  <button id="-Z" on:touchstart|preventDefault={touch_start} on:touchmove={touch_move} on:touchend={touch_end} on:touchcancel={touch_end} class:active={state["-Z"]} class="bottom-row"></button>
+    <button id="number"
+        on:click={handle_click}
+        on:touchstart|preventDefault={touch_start}
+        on:touchmove={touch_move}
+        on:touchend={touch_end}
+        on:touchcancel={touch_end}
+        class:active={state["#"]}>
+    </button>
+
+    <button id="S-"
+        on:click={handle_click}
+        on:touchstart|preventDefault={touch_start}
+        on:touchmove={touch_move}
+        on:touchend={touch_end}
+        on:touchcancel={touch_end}
+        class:active={state["S-"]} class="long-key">
+    </button>
+
+    <button id="T-"
+        on:click={handle_click}
+        on:touchstart|preventDefault={touch_start}
+        on:touchmove={touch_move}
+        on:touchend={touch_end}
+        on:touchcancel={touch_end}
+        class:active={state["T-"]} class="top-row">
+    </button>
+
+    <button id="K-"
+        on:click={handle_click}
+        on:touchstart|preventDefault={touch_start}
+        on:touchmove={touch_move}
+        on:touchend={touch_end}
+        on:touchcancel={touch_end}
+        class:active={state["K-"]} class="bottom-row">
+    </button>
+
+    <button id="P-"
+        on:click={handle_click}
+        on:touchstart|preventDefault={touch_start}
+        on:touchmove={touch_move}
+        on:touchend={touch_end}
+        on:touchcancel={touch_end}
+        class:active={state["P-"]} class="top-row">
+    </button>
+
+    <button id="W-"
+        on:click={handle_click}
+        on:touchstart|preventDefault={touch_start}
+        on:touchmove={touch_move}
+        on:touchend={touch_end}
+        on:touchcancel={touch_end}
+        class:active={state["W-"]} class="bottom-row">
+    </button>
+
+    <button id="H-"
+        on:click={handle_click}
+        on:touchstart|preventDefault={touch_start}
+        on:touchmove={touch_move}
+        on:touchend={touch_end}
+        on:touchcancel={touch_end}
+        class:active={state["H-"]} class="top-row">
+    </button>
+
+    <button id="R-"
+        on:click={handle_click}
+        on:touchstart|preventDefault={touch_start}
+        on:touchmove={touch_move}
+        on:touchend={touch_end}
+        on:touchcancel={touch_end}
+        class:active={state["R-"]} class="bottom-row">
+    </button>
+
+    <div id="A-" class="vowel-container">
+        <!--note: the button ids don't have the dash, to distinguish them from the div ids!
+                (and also to make interfacing with the stroke library easier, where the vowels
+                 don't have dashes either)-->
+        <button id="A"
+            on:click={handle_click}
+            on:touchstart|preventDefault={touch_start}
+            on:touchmove={touch_move}
+            on:touchend={touch_end}
+            on:touchcancel={touch_end}
+            class:active={state["A"]} class="left-vowel">
+        </button>
+    </div>
+
+    <div id="O-" class="vowel-container">
+        <button id="O"
+            on:click={handle_click}
+            on:touchstart|preventDefault={touch_start}
+            on:touchmove={touch_move}
+            on:touchend={touch_end}
+            on:touchcancel={touch_end}
+            class:active={state["O"]} class="left-vowel">
+        </button>
+    </div>
+
+    <button id="star"
+	on:click={handle_click}
+	on:touchstart|preventDefault={touch_start}
+	on:touchmove={touch_move}
+	on:touchend={touch_end}
+	on:touchcancel={touch_end}
+	class:active={state["*"]} class="long-key">
+    </button>
+
+    <div id="-E" class="vowel-container">
+        <button id="E"
+            on:click={handle_click}
+            on:touchstart|preventDefault={touch_start}
+            on:touchmove={touch_move}
+            on:touchend={touch_end}
+            on:touchcancel={touch_end}
+            class:active={state["E"]} class="right-vowel">
+        </button>
+    </div>
+
+    <div id="-U" class="vowel-container">
+        <button id="U"
+          on:click={handle_click}
+          on:touchstart|preventDefault={touch_start}
+          on:touchmove={touch_move}
+          on:touchend={touch_end}
+          on:touchcancel={touch_end}
+          class:active={state["U"]} class="right-vowel">
+      </button>
+    </div>
+
+    <button id="-F"
+        on:click={handle_click}
+        on:touchstart|preventDefault={touch_start}
+        on:touchmove={touch_move}
+        on:touchend={touch_end}
+        on:touchcancel={touch_end}
+        class:active={state["-F"]} class="top-row">
+    </button>
+
+    <button id="-R"
+        on:click={handle_click}
+        on:touchstart|preventDefault={touch_start}
+        on:touchmove={touch_move}
+        on:touchend={touch_end}
+        on:touchcancel={touch_end}
+        class:active={state["-R"]} class="bottom-row">
+    </button>
+
+    <button id="-P"
+        on:click={handle_click}
+        on:touchstart|preventDefault={touch_start}
+        on:touchmove={touch_move}
+        on:touchend={touch_end}
+        on:touchcancel={touch_end}
+        class:active={state["-P"]} class="top-row">
+    </button>
+
+    <button id="-B"
+        on:click={handle_click}
+        on:touchstart|preventDefault={touch_start}
+        on:touchmove={touch_move}
+        on:touchend={touch_end}
+        on:touchcancel={touch_end}
+        class:active={state["-B"]} class="bottom-row">
+    </button>
+
+    <button id="-L"
+        on:click={handle_click}
+        on:touchstart|preventDefault={touch_start}
+        on:touchmove={touch_move}
+        on:touchend={touch_end}
+        on:touchcancel={touch_end}
+        class:active={state["-L"]} class="top-row">
+    </button>
+
+    <button id="-G"
+        on:click={handle_click}
+        on:touchstart|preventDefault={touch_start}
+        on:touchmove={touch_move}
+        on:touchend={touch_end}
+        on:touchcancel={touch_end}
+        class:active={state["-G"]} class="bottom-row">
+    </button>
+
+    <button id="-T"
+        on:click={handle_click}
+        on:touchstart|preventDefault={touch_start}
+        on:touchmove={touch_move}
+        on:touchend={touch_end}
+        on:touchcancel={touch_end}
+        class:active={state["-T"]} class="top-row">
+    </button>
+
+    <button id="-S"
+        on:click={handle_click}
+        on:touchstart|preventDefault={touch_start}
+        on:touchmove={touch_move}
+        on:touchend={touch_end}
+        on:touchcancel={touch_end}
+        class:active={state["-S"]} class="bottom-row">
+    </button>
+
+    <button id="-D"
+        on:click={handle_click}
+        on:touchstart|preventDefault={touch_start}
+        on:touchmove={touch_move}
+        on:touchend={touch_end}
+        on:touchcancel={touch_end}
+        class:active={state["-D"]} class="top-row">
+    </button>
+
+    <button id="-Z"
+        on:click={handle_click}
+        on:touchstart|preventDefault={touch_start}
+        on:touchmove={touch_move}
+        on:touchend={touch_end}
+        on:touchcancel={touch_end}
+        class:active={state["-Z"]} class="bottom-row">
+    </button>
 </div>
