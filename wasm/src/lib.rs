@@ -1,16 +1,13 @@
 #![no_std]
-//#![cfg_attr(not(test), no_std)]
 
 use core::mem::size_of;
 
 extern crate wyhash;
 use wyhash::wyhash;
 
-#[cfg(not(test))]
 #[link(wasm_import_module = "env")]
 extern { fn logErr(offset: u32, length: u32, line: u32); }
 
-#[cfg(not(test))]
 fn log_err_internal(message: (&[u8], u32)) {
     let string = message.0;
     let line = message.1;
@@ -19,20 +16,6 @@ fn log_err_internal(message: (&[u8], u32)) {
     }
 }
 
-#[cfg(test)]
-fn log_err_internal(string: &[u8]) {
-    println!("{}", std::str::from_utf8(string).unwrap_or("<couldn't decode utf-8"));
-}
-
-// workaround for https://github.com/bytecodealliance/wasmtime/issues/1435
-#[cfg(test)]
-extern crate wee_alloc;
-
-#[cfg(test)]
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-
-#[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     //if let Some(string) = info.payload().downcast_ref::<&str>() {
