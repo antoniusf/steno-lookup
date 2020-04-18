@@ -295,14 +295,22 @@
   }
 </style>
 
-<div id="steno-keyboard">
+<!-- I don't think the graphical stroke display is useful for users of
+     assistive technology, especially since its functionality is replicated
+     one-to-one in the stroke text input field. On the contrary, I think that
+     it is probably quite annoying and confusing to tab through, so I've
+     decided to just remove it from the accessibility tree for now.
+ -->
+
+<div id="steno-keyboard" aria-hidden="true">
     <button id="number"
         on:click={handle_click}
         on:touchstart|preventDefault={touch_start}
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["#"]}>
+        class:active={state["#"]}
+        tabindex="-1">
     </button>
 
     <button id="S-"
@@ -311,7 +319,8 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["S-"]} class="long-key">
+        class:active={state["S-"]} class="long-key"
+        tabindex="-1">
     </button>
 
     <button id="T-"
@@ -320,7 +329,8 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["T-"]} class="top-row">
+        class:active={state["T-"]} class="top-row"
+        tabindex="-1">
     </button>
 
     <button id="K-"
@@ -329,7 +339,8 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["K-"]} class="bottom-row">
+        class:active={state["K-"]} class="bottom-row"
+        tabindex="-1">
     </button>
 
     <button id="P-"
@@ -338,7 +349,8 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["P-"]} class="top-row">
+        class:active={state["P-"]} class="top-row"
+        tabindex="-1">
     </button>
 
     <button id="W-"
@@ -347,7 +359,8 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["W-"]} class="bottom-row">
+        class:active={state["W-"]} class="bottom-row"
+        tabindex="-1">
     </button>
 
     <button id="H-"
@@ -356,7 +369,8 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["H-"]} class="top-row">
+        class:active={state["H-"]} class="top-row"
+        tabindex="-1">
     </button>
 
     <button id="R-"
@@ -365,7 +379,8 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["R-"]} class="bottom-row">
+        class:active={state["R-"]} class="bottom-row"
+        tabindex="-1">
     </button>
 
     <div id="A-" class="vowel-container">
@@ -378,7 +393,8 @@
             on:touchmove={touch_move}
             on:touchend={touch_end}
             on:touchcancel={touch_end}
-            class:active={state["A"]} class="left-vowel">
+            class:active={state["A"]} class="left-vowel"
+        tabindex="-1">
         </button>
     </div>
 
@@ -389,7 +405,8 @@
             on:touchmove={touch_move}
             on:touchend={touch_end}
             on:touchcancel={touch_end}
-            class:active={state["O"]} class="left-vowel">
+            class:active={state["O"]} class="left-vowel"
+        tabindex="-1">
         </button>
     </div>
 
@@ -399,7 +416,8 @@
 	on:touchmove={touch_move}
 	on:touchend={touch_end}
 	on:touchcancel={touch_end}
-	class:active={state["*"]} class="long-key">
+	class:active={state["*"]} class="long-key"
+        tabindex="-1">
     </button>
 
     <div id="-E" class="vowel-container">
@@ -409,7 +427,8 @@
             on:touchmove={touch_move}
             on:touchend={touch_end}
             on:touchcancel={touch_end}
-            class:active={state["E"]} class="right-vowel">
+            class:active={state["E"]} class="right-vowel"
+        tabindex="-1">
         </button>
     </div>
 
@@ -420,7 +439,8 @@
           on:touchmove={touch_move}
           on:touchend={touch_end}
           on:touchcancel={touch_end}
-          class:active={state["U"]} class="right-vowel">
+          class:active={state["U"]} class="right-vowel"
+        tabindex="-1">
       </button>
     </div>
 
@@ -430,7 +450,8 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-F"]} class="top-row">
+        class:active={state["-F"]} class="top-row"
+        tabindex="-1">
     </button>
 
     <button id="-R"
@@ -439,7 +460,8 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-R"]} class="bottom-row">
+        class:active={state["-R"]} class="bottom-row"
+        tabindex="-1">
     </button>
 
     <button id="-P"
@@ -448,7 +470,8 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-P"]} class="top-row">
+        class:active={state["-P"]} class="top-row"
+        tabindex="-1">
     </button>
 
     <button id="-B"
@@ -457,7 +480,8 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-B"]} class="bottom-row">
+        class:active={state["-B"]} class="bottom-row"
+        tabindex="-1">
     </button>
 
     <button id="-L"
@@ -466,7 +490,8 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-L"]} class="top-row">
+        class:active={state["-L"]} class="top-row"
+        tabindex="-1">
     </button>
 
     <button id="-G"
@@ -475,7 +500,8 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-G"]} class="bottom-row">
+        class:active={state["-G"]} class="bottom-row"
+        tabindex="-1">
     </button>
 
     <button id="-T"
@@ -484,7 +510,8 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-T"]} class="top-row">
+        class:active={state["-T"]} class="top-row"
+        tabindex="-1">
     </button>
 
     <button id="-S"
@@ -493,7 +520,8 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-S"]} class="bottom-row">
+        class:active={state["-S"]} class="bottom-row"
+        tabindex="-1">
     </button>
 
     <button id="-D"
@@ -502,7 +530,8 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-D"]} class="top-row">
+        class:active={state["-D"]} class="top-row"
+        tabindex="-1">
     </button>
 
     <button id="-Z"
@@ -511,6 +540,7 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-Z"]} class="bottom-row">
+        class:active={state["-Z"]} class="bottom-row"
+        tabindex="-1">
     </button>
 </div>
