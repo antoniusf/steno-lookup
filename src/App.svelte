@@ -102,7 +102,7 @@
     {/if}
   </main>
 
-  <p id="version-info">Service worker version: {serviceworker_version}</p>
+  <p id="version-info">App version: __version__<br>Service worker version: {serviceworker_version}</p>
 </div>
 
 <style>
