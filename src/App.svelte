@@ -102,7 +102,7 @@
     {/if}
   </main>
 
-  <p id="version-info">App version: __version__<br>Service worker version: {serviceworker_version}</p>
+  <p id="version-info">App version: __version__<br>Service worker version: {serviceworker_version}<br>File a bug or contribute to development on <a href="https://github.com/antoniusf/steno-lookup">github</a></p>
 </div>
 
 <style>
