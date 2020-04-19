@@ -132,7 +132,15 @@
 	  status: "done"
       });
   }
-    
+
+  const date_formatter = new Intl.DateTimeFormat(undefined, {
+      year: "numeric",
+      month:"long",
+      day:"numeric",
+      hour:"numeric",
+      minute:"numeric"
+  });
+      
 </script>
 
 <style>
@@ -183,6 +191,11 @@ div#updates > p {
     text-align: left;
 }
 
+p#update-info {
+    font-size: 0.8rem;
+    margin: 1em 0;
+}
+
 h2 {
     margin: 2em 0 0.1em 0.3em;
     padding: 0;
@@ -223,7 +236,16 @@ h2 {
     <p>Update available ({formatFilesize(update_info.update_size)})</p>
     <button on:click={event => navigator.serviceWorker.controller.postMessage("do-update")}>Update!</button>
   {:else}
-    <p>Last checked: {Intl.DateTimeFormat("en-US", {year: "numeric", month:"long", day:"numeric", hour:"numeric", minute:"numeric"}).format(update_info.date_checked)}</p>
+    <p>Last checked: {
+      update_info.date_checked?
+	    date_formatter.format(update_info.date_checked)
+    	    : "(unknown)"
+    }
+    </p>
+                  
     <button on:click={event => navigator.serviceWorker.controller.postMessage("checkforupdates")}>Check</button>
   {/if}
 </div>
+{#if (update_info.serviceworker_info)}
+  <p id="update-info">{update_info.serviceworker_info}</p>
+{/if}

@@ -121,6 +121,10 @@ async function installNewestVersion(defer_deleting_old_cache = false) {
     const start = performance.now();
 
     // check one last time to make sure we're getting the most up-to-date version
+    await notifyClients({
+	type: "serviceworker-info",
+	text: "Updating version info..."
+    });
     const upstream_versioninfo = await checkForUpdates();
 
     const upstream_version = upstream_versioninfo.version;
@@ -136,6 +140,11 @@ async function installNewestVersion(defer_deleting_old_cache = false) {
 
     console.log("mismatch, updating.")
 
+    await notifyClients({
+	type: "serviceworker-info",
+	text: "Downloading files..."
+    });
+
     // open a new cache for the new version,
     // so we can replace everything cleanly
     const new_cache_name = 'v1-' + upstream_version;
@@ -147,6 +156,11 @@ async function installNewestVersion(defer_deleting_old_cache = false) {
     await new_cache.addAll(upstream_versioninfo.files);
 
     console.log("installNewestVersion: new cache's keys: " + await new_cache.keys());
+
+    await notifyClients({
+	type: "serviceworker-info",
+	text: "Cleaning up..."
+    });
 
     await set("local-version", upstream_version);
     cached_local_version = upstream_version;
@@ -165,6 +179,11 @@ async function installNewestVersion(defer_deleting_old_cache = false) {
     }
 
     console.log("perf: installNewestVersion took " + (performance.now() - start) + "ms");
+
+    await notifyClients({
+	type: "serviceworker-info",
+	text: "Done! Your page should reload now."
+    });
 
     notifyClients({ type: "update-info", status: "installed", last_checked: new Date() });
 }
@@ -231,14 +250,47 @@ self.addEventListener('message', async (event) => {
         });
     }
     else if (event.data == "checkforupdates") {
-	checkForUpdates().catch((error) => {
-            console.log("Error in checkForUpdates: " + error + " (" + error.fileName + ":" + error.lineNumber + ")");
-        });
+	console.log("hello");
+	event.source.postMessage({
+	    type: "serviceworker-info",
+	    text: "Checking..."
+	});
+
+	try {
+	    await checkForUpdates();
+	    event.source.postMessage({
+		type: "serviceworker-info",
+		text: ""
+	    });
+	}
+	catch(error) {
+	    event.source.postMessage({
+		type: "serviceworker-info",
+		text: `Sorry, couldn't check for updates. (Error: ${error})`
+	    });
+	    console.log("Error in checkForUpdates: " + error + " (" + error.fileName + ":" + error.lineNumber + ")");
+
+	    // at least send an update-info
+	    const update_available = await get("update-available");
+	    event.source.postMessage({
+		type: "update-info",
+		status: update_available? "available":"up-to-date",
+		date_checked: await get("date-checked"),
+		update_size: await get("update-size")
+	    });
+	}
     }
     else if (event.data == "do-update") {
-	installNewestVersion().catch((error) => {
+	try {
+	    await installNewestVersion();
+	}
+	catch (error) {
+	    event.source.postMessage({
+		type: "serviceworker-info",
+		text: `Sorry, update failed. (Error: ${error})`
+	    });
             console.log("Error in installNewestVersion: " + error + " (" + error.fileName + ":" + error.lineNumber + ")");
-        });
+        }
     }
     else if (event.data == "get-update-info") {
         const update_available = await get("update-available");

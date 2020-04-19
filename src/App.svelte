@@ -34,6 +34,10 @@
                 update_info.update_size = event.data.update_size;
 		console.log(JSON.stringify(update_info, null, 2));
 	    }
+	    else if (event.data.type == "serviceworker-info") {
+		update_info.serviceworker_info = event.data.text;
+		console.log(update_info.serviceworker_info);
+	    }
 	}));
 
 	if (navigator.serviceWorker.controller) {
@@ -69,9 +73,9 @@
     <h1>{titles[status]}</h1>
     <button id="switch" on:click={e => { if (status == "query") { status = "find-stroke" } else { status = "query"} }} disabled={dictionary == null}>
       {#if (status == "query")}
-        <img src="STK-icon.svg" alt="lookup english"/>
+        <img src="STK-icon.svg" alt="find stroke"/>
       {:else}
-        <img src="abc-icon.svg" alt="lookup steno"/>
+        <img src="abc-icon.svg" alt="lookup"/>
       {/if}
     </button>
     <button id="load" class={(status == 'load-dict') ? 'selected' : ''} on:click={toggleLoad} disabled={dictionary == null}>
