@@ -2,7 +2,6 @@
     import StrokeDisplay from './StrokeDisplay.svelte';
     import ResultsTable from './ResultsTable.svelte';
     import { textToStroke, strokeToText } from './util.js';
-    import { findStroke } from './wasm-interface.js';
 
     export let dictionary;
 
@@ -40,7 +39,7 @@
     }
 
     async function doQuery() {
-	results = await findStroke(dictionary, stroke);
+	results = dictionary.find_stroke(stroke);
     }
 </script>
 

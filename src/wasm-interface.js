@@ -5,14 +5,7 @@ let text_encoder = new TextEncoder("utf-8");
 
 let global_module;
 
-// fields:
-// instance: the wasm instance to be used for querying
-// results: the results list written by yield_result
-// query_start, strokes_start, strokes_length, string_start, string_length:
-//  info on the data layout of the instance's memory
-let query_instance;
-
-export async function initialize (dictionary = undefined) {
+export async function initialize (dictionary_data = undefined) {
 
     // TODO: compileStreaming doesn't work on Safari, which is really annoying, because the
     // alternative (normal instantiate from fetch.arrayBuffer()) doesn't work on firefox for android
@@ -24,15 +17,13 @@ export async function initialize (dictionary = undefined) {
     global_module = WebAssembly.compileStreaming(fetch(url));
 
     // instanciate the module as well, given the dictionary
-    if (dictionary) {
-	let instance = instanciate(global_module);
-	query_instance = prepare_instance_for_querying(instance, dictionary);
+    if (dictionary_data) {
+	let instance = await instanciate(global_module);
+	return prepare_instance_for_querying(instance, dictionary_data);
     }
 }
 
 // takes a promise for a module, returns a promise for an instance.
-// this is so we can chain everything nicely and immediately obtain
-// a promise for global_instance, at least when using with prepare_instance_for_querying.
 async function instanciate(module) {
 
     // there is a bit of a chicken-and-egg problem here, where we want the module import functions
@@ -72,44 +63,68 @@ async function instanciate(module) {
     return {instance: instance, results: results};
 }
 
-async function prepare_instance_for_querying(instance_info, dictionary) {
+function prepare_instance_for_querying(instance_info, dictionary_data) {
 
     const wasm_page_size = 65536;
 
-    let data_size = dictionary.data.length;
+    let data_size = dictionary_data.length;
 
     let query_maxlength = 100;
     
     const size = data_size + query_maxlength;
     const pages_needed = Math.ceil(size / wasm_page_size);
 
-    instance_info = await instance_info;
     let instance = instance_info.instance;
+    let results = instance_info.results;
+
     const num_base_pages = instance.exports.memory.grow(pages_needed);
     const base_offset = num_base_pages * wasm_page_size;
     const query_start = base_offset + data_size
 
     let wasm_data = new Uint8Array(instance.exports.memory.buffer, base_offset, data_size);
-    wasm_data.set(dictionary.data);
+    wasm_data.set(dictionary_data);
 
-    // now that the data is stored in wasm memory, we don't need an extra copy in js!
-    // we can just have the dictionary refer to the wasm version.
-    // (since we don't realloc, this should be stable)
-    dictionary.data = wasm_data;
 
-    // store necessary info in global state
-    // in principle, we could also store this in wasm memory,
-    // but i don't see the point. (also, it would be work since
-    // globals in rust are always pointers.)
-    query_instance = {
-	instance: instance,
-	results: instance_info.results,
+    let data_start = base_offset;
+    // define the two query functions here, so they can capture
+    // all necessary variables and gain correct scoping automatically
+    function lookup(query) {
 
-	data_start: base_offset,
-	query_start: query_start
-    };
+	const start = performance.now();
 
-    return query_instance;
+	// limit length to 100 bytes, since that's how much is reserved
+	const encoded_query = text_encoder.encode(query).subarray(0, 100);
+
+	let wasm_query = new Uint8Array(instance.exports.memory.buffer, query_start, encoded_query.length);
+	wasm_query.set(encoded_query);
+
+	// clear results in place
+	// this is necessary since it is captured by the yield_results function, so we can't reassign
+	results.splice(0, results.length);
+	instance.exports.query(query_start, encoded_query.length,
+			    data_start,
+			    0);
+	console.log(`query took ${performance.now() - start}ms`);
+	// make a copy, so that the caller can't accidentally mess with our data
+	return results.slice();
+    }
+
+    function find_stroke(stroke) {
+
+	// clear results in place
+	// this is necessary since it is captured by the yield_results function, so we can't reassign
+	results.splice(0, results.length);
+	const start = performance.now();
+	instance.exports.query(stroke, 0,
+			    data_start,
+			    1);
+	console.log(`query took ${performance.now() - start}ms`);
+	// make a copy, so that the caller can't accidentally mess with our data
+	return results.slice();
+    }
+
+    // return wasm_data as well, so that the caller can store it if they want
+    return { lookup: lookup, find_stroke: find_stroke, data: wasm_data };
 }
 
 export async function loadJson (json) {
@@ -144,7 +159,6 @@ export async function loadJson (json) {
 
     // use slice to create a copy of this array, so we can release the memory
     const data_array = new Uint8Array(wasm.exports.memory.buffer, info_ptr, data_length).slice();
-    let dictionary = { data: data_array };
 
     // [releasing the memory along with the wasm instance:]
     // since it is only referenced by the imported js functions,
@@ -153,56 +167,7 @@ export async function loadJson (json) {
     // function.
 
     // convenience: load the new dictionary into a query-mode instance
-    query_instance = prepare_instance_for_querying(instanciate(global_module), dictionary);
+    let dictionary = prepare_instance_for_querying(await instanciate(global_module), data_array);
 
     return dictionary;
-}
-
-export async function doQuery(dictionary, query) {
-
-    const start = performance.now();
-    if (!query_instance) {
-	console.log("Error: doQuery: there is currently now wasm module loaded for querying. Call prepare_instance_for_querying first.");
-	return;
-    }
-
-    // wait for the instance, in case it's still being prepared
-    let query_info = await query_instance;
-    let instance = query_info.instance;
-    
-    // limit length to 100 bytes, since that's how much is reserved
-    const encoded_query = text_encoder.encode(query).subarray(0, 100);
-
-    let wasm_query = new Uint8Array(instance.exports.memory.buffer, query_info.query_start, encoded_query.length);
-    wasm_query.set(encoded_query);
-
-    // clear results in place
-    // this is necessary since it is captured by the yield_results function, so we can't reassign
-    query_info.results.splice(0, query_info.results.length);
-    instance.exports.query(query_info.query_start, encoded_query.length,
-			   query_info.data_start,
-			   0);
-    console.log(`query took ${performance.now() - start}ms`);
-    return query_info.results;
-}
-
-export async function findStroke(dictionary, stroke) {
-    if (!query_instance) {
-	console.log("Error: doQuery: there is currently now wasm module loaded for querying. Call prepare_instance_for_querying first.");
-	return;
-    }
-
-    // wait for the instance, in case it's still being prepared
-    let query_info = await query_instance;
-    let instance = query_info.instance;
-
-    // clear results in place
-    // this is necessary since it is captured by the yield_results function, so we can't reassign
-    query_info.results.splice(0, query_info.results.length);
-    const start = performance.now();
-    instance.exports.query(stroke, 0,
-			   query_info.data_start,
-			   1);
-    console.log(`query took ${performance.now() - start}ms`);
-    return query_info.results;
 }

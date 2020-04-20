@@ -153,3 +153,50 @@ export function strokeToKeydict (stroke) {
     }
     return keydict;
 }
+
+export function formatFilesize (size) {
+
+    if (size < 0) {
+        throw RangeError("File size must be larger than 0!");
+    }
+
+    // first, choose prefix
+    // (get order of magnitude in base 1000)
+    let order_of_magnitude = Math.log10(size) / 3;
+
+    // i'm adding a small constant, so that values very
+    // close to the next multiple of thousand get rounded up
+    // (displaying 1MB instead of 995kB)
+    // again, i am dividing the result from log10 by 3,
+    // since we're working in base 1000
+    const rounding_correction = Math.log10(1000/995) / 3;
+    order_of_magnitude += rounding_correction;
+    
+    // i'm also adding another constant because i want
+    // 100 kB (or 99.5kB, because of our correction) to get shown as 0.1 MB.
+    // this means i am adding 1 / 3., which is basically
+    // the same as if i'd multiplied the original value by 10
+    // before doing anything else
+    order_of_magnitude += 1/3;
+
+    // lastly, i'm rounding down to get our final classification.
+    // everything below 99.5 goes to 0, etc.
+    // (yes i know that we can't have half bytes, so it should really
+    //  say 99, but for the higher orders it's going to be
+    //  99.5 * 1000^n gets rounded to n
+    order_of_magnitude = Math.floor(order_of_magnitude);
+
+    // now we can actually compute the rounded mantissa!
+    // (that's the part before the prefix)
+    // round to one decimal digit
+    const mantissa = Math.round(size / (1000**order_of_magnitude) * 10) / 10;
+
+    const prefixes = ["", "k", "M", "G", "T", "P", "E"]
+    if (order_of_magnitude < prefixes.length) {
+        // \u2009 is a narrow no-break space
+        return mantissa + "\u202F" + prefixes[order_of_magnitude] + "B";
+    } else {
+        // just in case someone passes in an unrealistically large value
+        return mantissa + "e" + (3 * order_of_magnitude) + "\u202FB";
+    }
+}
