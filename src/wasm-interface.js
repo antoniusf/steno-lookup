@@ -14,7 +14,9 @@ export async function initialize (dictionary_data = undefined) {
 
     let url = './helpers.wasm';
 
-    global_module = WebAssembly.compileStreaming(fetch(url));
+    if (!global_module) {
+	global_module = WebAssembly.compileStreaming(fetch(url));
+    }
 
     // instanciate the module as well, given the dictionary
     if (dictionary_data) {
