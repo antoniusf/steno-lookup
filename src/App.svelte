@@ -8,7 +8,6 @@
     if ('serviceWorker' in navigator) {
 	navigator.serviceWorker.register('serviceworker.js')
 	    .then((registration) => {
-		registration.onupdatefound = (e => alert("update!!"));
 		console.log("Service worker registration successful.");
 	    }).catch((error) => {
 		console.log("Service worker registration failed: " + error);
@@ -42,7 +41,7 @@
 
 	if (navigator.serviceWorker.controller) {
 	    navigator.serviceWorker.controller.postMessage("getversion");
-	    // TODO: add a timer for checkforupdates or sth
+	    navigator.serviceWorker.controller.postMessage("get-update-info");
 	    navigator.serviceWorker.controller.postMessage("checkforupdates");
 	}
     }

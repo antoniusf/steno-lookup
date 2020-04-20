@@ -269,15 +269,6 @@ self.addEventListener('message', async (event) => {
 		text: `Sorry, couldn't check for updates. (Error: ${error})`
 	    });
 	    console.log("Error in checkForUpdates: " + error + " (" + error.fileName + ":" + error.lineNumber + ")");
-
-	    // at least send an update-info
-	    const update_available = await get("update-available");
-	    event.source.postMessage({
-		type: "update-info",
-		status: update_available? "available":"up-to-date",
-		date_checked: await get("date-checked"),
-		update_size: await get("update-size")
-	    });
 	}
     }
     else if (event.data == "do-update") {

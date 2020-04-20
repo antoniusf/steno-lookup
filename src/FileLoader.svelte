@@ -17,6 +17,8 @@
 
   onMount(async () => {
 
+      // status is "initializing" only on page load, so that we get a
+      // chance to try and load the dictionary from storage.
       if (status == "initializing") {
         let stored_dictionary = await get("dictionary");
         if (!stored_dictionary) {
