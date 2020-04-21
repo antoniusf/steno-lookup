@@ -194,7 +194,7 @@ h2 {
     }
     </p>
                   
-    <button on:click={event => navigator.serviceWorker.controller.postMessage("checkforupdates")}>Check</button>
+    <button on:click={event => navigator.serviceWorker.controller.postMessage("check-for-updates")}>Check</button>
   {/if}
 </div>
 {#if (update_info.serviceworker_info)}

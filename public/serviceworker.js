@@ -27,7 +27,7 @@ self.addEventListener('fetch', (event) => {
 });
 
 self.addEventListener('message', (event) => {
-    if (event.data == "getversion") {
+    if (event.data == "get-version") {
 	event.source.postMessage({type: "version-info", serviceworker_version: "dev/friday3"});
     }
 });

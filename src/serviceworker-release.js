@@ -139,7 +139,7 @@ async function installNewestVersion() {
         console.log("versions match, we're all good.")
 	await notifyClients({
 	    type: "serviceworker-info",
-	    text: "Versions match nothing to update..."
+	    text: "Huh, seems like your local version is already up-to-date..."
 	});
 	return;
     }
@@ -245,13 +245,13 @@ self.addEventListener('fetch', (event) => {
 });
 
 self.addEventListener('message', async (event) => {
-    if (event.data == "getversion") {
+    if (event.data == "get-version") {
 	event.source.postMessage({
             type: "version-info",
-            serviceworker_version: "friday-lite-0.12"
+            serviceworker_version: "friday-lite-0.14"
         });
     }
-    else if (event.data == "checkforupdates") {
+    else if (event.data == "check-for-updates") {
 	console.log("hello");
 	event.source.postMessage({
 	    type: "serviceworker-info",

@@ -40,9 +40,9 @@
 	}));
 
 	if (navigator.serviceWorker.controller) {
-	    navigator.serviceWorker.controller.postMessage("getversion");
+	    navigator.serviceWorker.controller.postMessage("get-version");
 	    navigator.serviceWorker.controller.postMessage("get-update-info");
-	    navigator.serviceWorker.controller.postMessage("checkforupdates");
+	    navigator.serviceWorker.controller.postMessage("check-for-updates");
 	}
     }
 
