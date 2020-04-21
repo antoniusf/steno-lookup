@@ -26,7 +26,7 @@ const urlNotInCacheMessage = `<!DOCTYPE html>
 <p>The resource you requested was not in our cache. This could be for one of three reasons:</p>
 <ul>
 <li>The resource is part of the app, but we forgot to cache it. In this case, it would be nice if you filed an issue.</li>
-<li>The resource is part of the app, but the browser deleted it from our cache. In this case, please try <a href="reinstall">re-downloading all relevant files</a>.</li>
+<li>The resource is part of the app, but the browser deleted it from our cache. In this case, please try <a href="./reinstall">re-downloading all relevant files</a>.</li>
 <li>The resource is not part of the app, but you or your browser decided to request it anyway. In this case, there is nothing we can do.</li>
 </ul>
 </body>
@@ -210,23 +210,25 @@ self.addEventListener('fetch', (event) => {
             return response;
         } else {
 	    const path = new URL(event.request.url).pathname;
+	    const scope_path = new URL(registration.scope).pathname;
             console.log(`file ${path} not in cache`);
 
-	    if (path == "/") {
+	    if (path == scope_path) {
 		// try retrieving the index
 		const response = await cache.match("/index.html");
 		if (response) {
 		    return response;
 		}
 	    }
-	    else if (path == "/reinstall") {
+	    // just check for the final component, for simplicity
+	    else if (path.split("/").slice(-1)[0] == "reinstall") {
 		// delete the local cache and set version to undefined
 		const cache_name = "v1-" + (await get("local-version"));
 		console.log(`deleting cache ${cache_name}`);
 		console.log(await caches.delete(cache_name));
 		await set("local-version", undefined);
 		await installNewestVersion();
-		const headers = new Headers({ "Location": "/index.html" });
+		const headers = new Headers({ "Location": scope_path + "index.html" });
 		const response = new Response("Done! Please go back to the main page now.", {status: 307, statusText: "Redirecting back home", headers: headers});
 		console.log("sent response with headers");
 		return response;
