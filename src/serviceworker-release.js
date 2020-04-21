@@ -248,7 +248,7 @@ self.addEventListener('message', async (event) => {
     if (event.data == "get-version") {
 	event.source.postMessage({
             type: "version-info",
-            serviceworker_version: "friday-lite-0.14"
+            serviceworker_version: "friday-lite-0.16"
         });
     }
     else if (event.data == "check-for-updates") {
