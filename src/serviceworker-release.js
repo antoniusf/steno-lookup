@@ -26,7 +26,7 @@ const urlNotInCacheMessage = `<!DOCTYPE html>
 <p>The resource you requested was not in our cache. This could be for one of three reasons:</p>
 <ul>
 <li>The resource is part of the app, but we forgot to cache it. In this case, it would be nice if you filed an issue.</li>
-<li>The resource is part of the app, but the browser deleted it from our cache. In this case, please try <a href="/reinstall">re-downloading all relevant files</a>.</li>
+<li>The resource is part of the app, but the browser deleted it from our cache. In this case, please try <a href="reinstall">re-downloading all relevant files</a>.</li>
 <li>The resource is not part of the app, but you or your browser decided to request it anyway. In this case, there is nothing we can do.</li>
 </ul>
 </body>
@@ -39,26 +39,28 @@ self.addEventListener('install', (event) => {
 async function setup() {
 
     const version = await get("local-version");
-    // if (version_object) {
-    // 	await checkForUpdates();
-    // } else {
-    // 	await installNewestVersion();
-    // }
+    if (version) {
+    	await checkForUpdates();
+    } else {
+    	await installNewestVersion();
+    }
 
-    //TESTING:
-    await installNewestVersion(true); // defer deleting old cache, the current sw might still be using it
+    // NOTE: we're only installing if there is currently no version installed.
+    //       updating the app when the service worker updates creates more problems
+    //       than it solves:
+    //        (a) we have to defer deleting the old cache, since the old sw might
+    //            still be using it
+    //        (b) we also can't set local-version, since if the user initiates an
+    //            update via the old sw, things will get confusing
+    //        (c) when we introduce binary format versioning, we want to warn the user
+    //            explicitly that updating to the new version will mean that they will
+    //            have to reload their dictionary. this would circumvent that. (note
+    //            that there's still a way around this, which is the emergency /reinstall
+    //            link. so we'll obviously still have to check the format when loading a
+    //            dictionary from local storage, but this should still avoid most instances
+    //            of annoying behavior.
 }
 
-self.addEventListener('activate', (event) => {
-    event.waitUntil(deleteOldCache().catch((error) => {
-	console.log(`Error in setup: ${error} (${error.fileName}:${error.lineNumber})`);
-    }));
-});
-
-async function deleteOldCache() {
-    console.log("deleted old cache: " + await caches.delete(await get("old-cache-name")));
-}
-	
 
 async function checkForUpdates() {
 
@@ -116,7 +118,7 @@ async function checkForUpdates() {
     }
 }
 
-async function installNewestVersion(defer_deleting_old_cache = false) {
+async function installNewestVersion() {
 
     const start = performance.now();
 
@@ -135,6 +137,10 @@ async function installNewestVersion(defer_deleting_old_cache = false) {
 
     if (local_version == upstream_version) {
         console.log("versions match, we're all good.")
+	await notifyClients({
+	    type: "serviceworker-info",
+	    text: "Versions match nothing to update..."
+	});
 	return;
     }
 
@@ -166,16 +172,10 @@ async function installNewestVersion(defer_deleting_old_cache = false) {
     cached_local_version = upstream_version;
 
     // now that indexeddb is successfully set to the new version, we can delete the old cache
-    if (defer_deleting_old_cache) {
-	// store the name in indexeddb, so we know which cache it is later
-	await set("old-cache-name", old_cache_name);
-    }
-    else {
-	if (await caches.delete(old_cache_name)) {
-	    console.log("old cache deleted.");
-	} else {
-	    console.log("coulnd't find old cache??");
-	}
+    if (await caches.delete(old_cache_name)) {
+	console.log("old cache deleted.");
+    } else {
+	console.log("coulnd't find old cache??");
     }
 
     console.log("perf: installNewestVersion took " + (performance.now() - start) + "ms");
@@ -246,7 +246,7 @@ self.addEventListener('message', async (event) => {
     if (event.data == "getversion") {
 	event.source.postMessage({
             type: "version-info",
-            serviceworker_version: "friday-lite-0.8"
+            serviceworker_version: "friday-lite-0.12"
         });
     }
     else if (event.data == "checkforupdates") {
@@ -276,7 +276,9 @@ self.addEventListener('message', async (event) => {
 	    await installNewestVersion();
 	}
 	catch (error) {
-	    event.source.postMessage({
+	    // this needs to be a notifyClients, since all clients get updates
+	    // from inside of the function
+	    notifyClients({
 		type: "serviceworker-info",
 		text: `Sorry, update failed. (Error: ${error})`
 	    });
