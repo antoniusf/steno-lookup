@@ -12,15 +12,16 @@ this is a small and lightweight app i made that lets you look up definitions fro
 ### things that are not so nice
 
 - the current lookup/dictionary handling code is kind of complex and not that easy to modify. i think part of that is the price to pay for the performance characteristics, but it might be worth trying alternatives and seeing if we can do without it.
-- absolutely does not work without a modern browser, since webassembly support is crucial. also, i never want to do css layout with anything other than grid/flexbox ever again.
+- absolutely does not work without a modern browser, since webassembly support is crucial. also because i never want to do css layout with anything other than grid/flexbox ever again.
 
 ### screenshots
 
-![screenshot of the app in lookup mode. there is a title, two buttons for switching to the other modes, a text entry box with the word "test" entered, and a list of results that shows definitions translating to "test".](screenshot-lookup.png) ![screenshot of the app in find stroke mode. below the title and mode buttons is a schema of a steno keyboard, with some keys highlighted. there is also a text entry box with the characters "T*ES", corresponding to the stroke shown by the keyboard. below that is a single result, showing that "T*ES" translates to "test".](screenshot-find-stroke.jpg) ![screenshot of the dictionary load screen. below the header is a box showing the currently loaded dictionary, with the option to remove it. below that is a subheading saying "Updates", some text saying that an update is available, and a button saying "Update!".](screenshot-load.png)
+![screenshot of the app in lookup mode. there is a title, two buttons for switching to the other modes, a text entry box with the word "test" entered, and a list of results that shows definitions translating to "test".](screenshot-lookup.png) ![screenshot of the app in find stroke mode. below the title and mode buttons is a schema of a steno keyboard, with some keys highlighted. there is also a text entry box with the characters "T\*ES", corresponding to the stroke shown by the keyboard. below that is a single result, showing that "T\*ES" translates to "test".](screenshot-find-stroke.jpg) ![screenshot of the dictionary load screen. below the header is a box showing the currently loaded dictionary, with the option to remove it. below that is a subheading saying "Updates", some text saying that an update is available, and a button saying "Update!".](screenshot-load.png)
+
 
 ## development setup
 
-you'll need [node](https://nodejs.org) for the main app, and [rust](https://www.rust-lang.org/) for the wasm module. optionally, you can also install wasm-strip from the [webassembly binary toolkit](https://github.com/WebAssembly/wabt) to make the produced wasm smaller.
+you'll need [node](https://nodejs.org) for the main app, and [rust](https://www.rust-lang.org/) for the wasm module. optionally, you can also install wasm-strip from the [webassembly binary toolkit](https://github.com/WebAssembly/wabt) to make the resulting wasm file smaller.
 
 the main app is based on the project template for [svelte](https://svelte.dev) apps from https://github.com/sveltejs/template. i've included the relevant parts from their readme below.
 
@@ -43,16 +44,13 @@ Navigate to [localhost:5000](http://localhost:5000). You should see your app run
 
 By default, the server will only respond to requests from localhost. To allow connections from other computers, edit the `sirv` commands in package.json to include the option `--host 0.0.0.0`.
 
+### testing the release service worker
 
-### Building and running in production mode
+the normal development build (`npm run dev`) includes a very simple service worker that does basically nothing. if you're working on the service worker that's actually used in production, you'll want to use the `server.py` script. it automatically serves the release service worker instead of the normal one, and it provides automatic hash-based versioning based on the files it finds in the directory. be aware that it has a master list of all files that are included in the app, so you may have to adjust that if you're adding or removing files. resources that are not on this list will not be included. `server.py` listens on port 5001 by default, so you can let it run alongside `npm run dev`. ⚠ *warning:* by default, this server listens on all interfaces, not just local ones. this is so that you can test on your smartphone, but it also means that anyone on the same network as you can talk to the probably insecure testing server. be careful what network you're on before using this!
 
-To create an optimised version of the app:
+### making a release
 
-```bash
-npm run build
-```
-
-You can run the newly built app with `npm run start`. This uses [sirv](https://github.com/lukeed/sirv), which is included in your package.json's `dependencies` so that the app will work when you deploy to platforms like [Heroku](https://heroku.com).
+to make a release, use `prepare-release.py <release-directory>`, and give it the directory where you want all the files to go. it will pull the version number from `package.json` and automatically tag the current commit, so it expects the working directory to be clean. it will then run `npm run build` (just to make sure), generate the version info file, and copy all of the files into your release directory. it will also make a special subdirectory for just this version, even though this isn't used right now.
 
 ### building the rust code
 
