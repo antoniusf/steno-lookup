@@ -61,4 +61,4 @@ once you have done this, switch to the wasm directory and just run `cargo build 
 1. run `wasm-strip` on the binary, to remove the debug sections produced by the rust compiler. (yes, it does this even in release mode. no, i did not figure out how to turn this off.)
 2. copies the file from `target/wasm32-unknown-unknown/release/wasm.wasm` into the `public` directory of the web app, renaming it to `helpers.wasm`.
 
-you can do these steps manually if you can't run the script. running `wasm-strip` is optional, too. you really only need to copy the file to the right place. note that if you're using `npm run dev`, doing this will not trigger an automatic reload, so don't forget to reload the page normally!
+you can do these steps manually if you can't run the script. running `wasm-strip` is optional, too. you really only need to copy the file to the right place. note that if you're using `npm run dev`, neither the script nor the manual way will trigger the automatic reload, so don't forget to reload the page normally!
