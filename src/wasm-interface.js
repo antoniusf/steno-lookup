@@ -7,15 +7,33 @@ let global_module;
 
 export async function initialize (dictionary_data = undefined) {
 
-    // TODO: compileStreaming doesn't work on Safari, which is really annoying, because the
-    // alternative (normal instantiate from fetch.arrayBuffer()) doesn't work on firefox for android
-    // since I'm using the latter but not the former, I'm going to keep it like this for now,
-    // but this'll definitely have to be fixed. ugh.
-
     let url = './helpers.wasm';
 
     if (!global_module) {
-	global_module = WebAssembly.compileStreaming(fetch(url));
+	// safari doesn't support compileStreaming, so I *hope* that this switch works
+	if (WebAssembly.compileStreaming) {
+	    global_module = WebAssembly.compileStreaming(fetch(url))
+	        .catch(error => {
+		    throw `Oh no, there was a problem with loading the WebAssembly module. This is not good, since we can't do anything without that. (${error})`
+		});
+	}
+	else {
+	    // but I also don't want to use this as standard,
+	    // (a) because compileStreaming is recommended, and
+	    // (b) because response.arrayBuffer doesn't work in
+	    //     firefox mobile yet, so I need a switch anyways
+	    global_module = fetch(url)
+	        .catch(error => { throw `Couldn't load the wasm file for some reason. Sorry, this shouldn't happen. (${error})`; })
+		.then(response => response.arrayBuffer())
+	        .then(bytes => WebAssembly.compile(bytes))
+	        .catch(error => {
+		    if (error instanceof TypeError) {
+			throw `Sorry, it seems like your browser does not support WebAssembly. We need this to make your queries fast while using as little of your precious RAM as possible. WebAssembly should be supported in the newest versions of all major browsers, except for Internet Explorer. (${error})`
+		    } else {
+			throw error;
+		    }
+		});
+	}
     }
 
     // instanciate the module as well, given the dictionary
