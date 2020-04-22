@@ -25,7 +25,14 @@
             status = "choosefile";
         } else {
             // TODO: can this fail?
-	    dictionary = await initialize(stored_dictionary.data);
+	    try {
+		dictionary = await initialize(stored_dictionary.data);
+	    }
+	    catch (error) {
+		status = "error";
+		status_message = `Error occured while trying to load stored dictionary: ${error}`;
+		return;
+	    }
 	    dictionary.name = stored_dictionary.name;
             status = "loaded";
             signalDone();
@@ -68,7 +75,7 @@
       } catch (error) {
           console.log(error);
           status = "error";
-          status_message = "Sorry, we can't read the file that you uploaded. Are you sure that it's an actual json dictionary? (" + error.name + ": " + error.message + ")";
+          status_message = `An error occured while trying to load your dictionary: ${error}`;
           return;
       }
 
