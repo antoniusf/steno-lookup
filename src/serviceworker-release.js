@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // TODO: clear out unused caches?
 //       i mean, this should happen normally in installNewestVersion()
 //       but if that crashes we may accumulate caches we don't need
