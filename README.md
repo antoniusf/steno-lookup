@@ -51,7 +51,7 @@ the normal development build (`npm run dev`) includes a very simple service work
 
 ### making a release
 
-to make a release, use `prepare-release.py <release-directory>`, and give it the directory where you want all the files to go. it will pull the version number from `package.json` and automatically tag the current commit, so it expects the working directory to be clean. it will then run `npm run build` (just to make sure), generate the version info file, and copy all of the files into your release directory. just like `server.py`, it also needs an up-to-date list of all the resources to be included with the app, so be sure to update that when you add or remove files!
+to make a release, use `prepare-release.py <release-directory>`, and give it the directory where you want all the files to go. it will pull the version number from `package.json` and automatically tag the current commit, so it expects the working directory to be clean. it will then run `npm run build` (just to make sure), generate the version info file, and copy all of the files into your release directory. it will also make a special subdirectory for just this version, which is used by the service worker. just like `server.py`, it also needs an up-to-date list of all the resources to be included with the app, so be sure to update that when you add or remove files!
 
 ### building the rust code
 
