@@ -11,6 +11,7 @@ this is a small and lightweight app i made that lets you look up definitions fro
 
 ### things that are not so nice
 
+- the page can take a looong time to load on my old phone. i've done some testing and i think this is probably inherent in using a service worker (at least with the current version of firefox on android), which is kind of sad. i've thought of working around this by making a pure http cache version, which *should* also provide some form of offline support even if it's less user friendly.
 - the current lookup/dictionary handling code is kind of complex and not that easy to modify. i think part of that is the price to pay for the performance characteristics, but it might be worth trying alternatives and seeing if we can do without it.
 - absolutely does not work without a modern browser, since webassembly support is crucial. also because i never want to do css layout with anything other than grid/flexbox ever again.
 
