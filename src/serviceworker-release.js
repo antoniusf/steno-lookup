@@ -230,7 +230,7 @@ self.addEventListener('fetch', (event) => {
 
 	    if (path == scope_path) {
 		// try retrieving the index
-		const response = await cache.match("/index.html");
+		const response = await cache.match("./index.html");
 		if (response) {
 		    return response;
 		}
