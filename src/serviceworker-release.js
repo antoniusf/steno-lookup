@@ -25,12 +25,22 @@ const urlNotInCacheMessage = `<!DOCTYPE html>
 <body>
 <p>The resource you requested was not in our cache. This could be for one of three reasons:</p>
 <ul>
+<li>The resource is not part of the app, but you somehow just ended up here. In this case, maybe you'd just like to <a href="${registration.scope}">go back home</a>?</li>
 <li>The resource is part of the app, but we forgot to cache it. In this case, it would be nice if you filed an issue.</li>
-<li>The resource is part of the app, but the browser deleted it from our cache. In this case, please try <a href="./reinstall">re-downloading all relevant files</a>.</li>
-<li>The resource is not part of the app, but you or your browser decided to request it anyway. In this case, maybe you'd just like to <a href="${registration.scope}">go back home</a>?</li>
+<li>The resource is part of the app, but something else went wrong. You may try <a href="./reinstall">re-downloading all relevant files</a> to fix this. Please be aware that this will clear the app's offline cache; if you are not connected to the internet, and you click this link, you will not be able to use the app again until you reconnect.</li>
 </ul>
 </body>
-</html>`
+</html>`;
+
+const reinstallErrorMessage = (error) => `<!DOCTYPE html>
+<html>
+<head>
+<title>Reinstallation failed</title>
+</head>
+<body>
+<p>Sorry, an error occured while we tried to reinstall your app. (${error})</p><p>This might be because you are not connected to the internet right now. If this is the case, please reconnect and reload this page.</p>
+</body>
+</html>`;
 
 self.addEventListener('install', (event) => {
     event.waitUntil(setup().catch(error => console.log("Error in setup: " + error + " (" + error.fileName + ":" + error.lineNumber + ")")));
@@ -242,11 +252,17 @@ self.addEventListener('fetch', (event) => {
 		console.log(`deleting cache ${cache_name}`);
 		console.log(await caches.delete(cache_name));
 		await set("local-version", undefined);
-		await installNewestVersion();
-		const headers = new Headers({ "Location": scope_path + "index.html" });
-		const response = new Response("Done! Please go back to the main page now.", {status: 307, statusText: "Redirecting back home", headers: headers});
-		console.log("sent response with headers");
-		return response;
+		try {
+		    await installNewestVersion();
+		    const headers = new Headers({ "Location": scope_path + "index.html" });
+		    const response = new Response("Done! Please go back to the main page now.", {status: 307, statusText: "Redirecting back home", headers: headers});
+		    return response;
+		}
+		catch (error) {
+		    const headers = new Headers({ "Content-Type": "text/html" });
+		    const response = new Response(reinstallErrorMessage(error), {status: 200, statusText: "no", headers: headers});
+		    return response;
+		}
 	    }
 	    // TODO: check if the resource should have been cached, so our error message can be more helpful?
 	    const headers = new Headers({ "Content-Type": "text/html" });
@@ -263,7 +279,7 @@ self.addEventListener('message', async (event) => {
     if (event.data == "get-version") {
 	event.source.postMessage({
             type: "version-info",
-            serviceworker_version: "friday-lite-0.18"
+            serviceworker_version: "friday-lite-0.23"
         });
     }
     else if (event.data == "check-for-updates") {
