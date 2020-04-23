@@ -155,11 +155,26 @@ async function installNewestVersion() {
     // so we can replace everything cleanly
     const new_cache_name = 'v1-' + upstream_version;
     const old_cache_name = 'v1-' + local_version;
+
+    // clear the cache first, in case it already has something in it
+    // (this can happen if /reinstall is used)
+    await caches.delete(new_cache_name);
     let new_cache = await caches.open(new_cache_name);
 
-    // TODO: make sure we cache versioned files??
-    // is this important?
-    await new_cache.addAll(upstream_versioninfo.files);
+    try {
+	for (const file of upstream_versioninfo.files) {
+	    const response = await fetch('./versioned/' + upstream_version + '/' + file);
+	    // TODO: we should check the response status here, but apparently this
+	    // is not implemented across all browsers yet? what??
+	    await new_cache.put(file, response);
+	}
+    }
+    catch (e) {
+	await caches.delete(new_cache_name);
+	throw(e);
+	// TODO: special handler for when this went through /reinstall --
+	//       maybe do something like unregister the serviceworker or sth
+    }
 
     console.log("installNewestVersion: new cache's keys: " + await new_cache.keys());
 
@@ -248,7 +263,7 @@ self.addEventListener('message', async (event) => {
     if (event.data == "get-version") {
 	event.source.postMessage({
             type: "version-info",
-            serviceworker_version: "friday-lite-0.16"
+            serviceworker_version: "friday-lite-0.17"
         });
     }
     else if (event.data == "check-for-updates") {

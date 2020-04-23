@@ -136,22 +136,22 @@ class Handler(BaseHTTPRequestHandler):
                     content_type = "text/plain"
 
             with open(path, "rb") as f:
-                if version:
-                    # hash file to check version
-                    hasher = hashlib.new("sha256")
-                    data = f.read()
-                    hasher.update(data)
+                #if version:
+                #    # hash file to check version
+                #    hasher = hashlib.new("sha256")
+                #    data = f.read()
+                #    hasher.update(data)
 
-                    print("requested version: {}".format(version))
-                    print("current version:   {}".format(hasher.hexdigest()))
+                #    print("requested version: {}".format(version))
+                #    print("current version:   {}".format(hasher.hexdigest()))
 
-                    if version != hasher.hexdigest():
-                        print ("VERSION MISMATCH!!")
-                        self.send_response(HTTPStatus.NOT_FOUND)
-                        self.end_headers()
-                        return
+                #    if version != hasher.hexdigest():
+                #        print ("VERSION MISMATCH!!")
+                #        self.send_response(HTTPStatus.NOT_FOUND)
+                #        self.end_headers()
+                #        return
 
-                    print ("all good, versions match.")
+                #    print ("all good, versions match.")
                 
                 content_length = f.seek(0, 2);
                 f.seek(0, 0) # go back to start
