@@ -27,7 +27,7 @@ const urlNotInCacheMessage = `<!DOCTYPE html>
 <ul>
 <li>The resource is part of the app, but we forgot to cache it. In this case, it would be nice if you filed an issue.</li>
 <li>The resource is part of the app, but the browser deleted it from our cache. In this case, please try <a href="./reinstall">re-downloading all relevant files</a>.</li>
-<li>The resource is not part of the app, but you or your browser decided to request it anyway. In this case, there is nothing we can do.</li>
+<li>The resource is not part of the app, but you or your browser decided to request it anyway. In this case, maybe you'd just like to <a href="${registration.scope}">go back home</a>?</li>
 </ul>
 </body>
 </html>`
@@ -263,7 +263,7 @@ self.addEventListener('message', async (event) => {
     if (event.data == "get-version") {
 	event.source.postMessage({
             type: "version-info",
-            serviceworker_version: "friday-lite-0.17"
+            serviceworker_version: "friday-lite-0.18"
         });
     }
     else if (event.data == "check-for-updates") {
