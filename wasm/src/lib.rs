@@ -54,7 +54,8 @@ pub unsafe extern fn load_json(offset: u32, length: u32) -> u32 {
 }
 
 #[repr(packed(4))]
-struct Offsets {
+struct Header {
+    version: u32,
     hash_table: usize,
     stroke_index: usize,
     definitions: usize,
@@ -66,6 +67,8 @@ struct StrokeIndexEntry {
     last_two_bytes: u16,
     definition_offset: usize
 }
+
+const FORMAT_VERSION: u32 = 0x00_01_00_00;
 
 // loads a json array into our custom memory format.
 pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> {
@@ -187,7 +190,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> 
     let stroke_prefix_lookup_length = 257;
     let stroke_prefix_lookup_size = stroke_prefix_lookup_length * size_of::<usize>();
 
-    let memory_needed = size_of::<Offsets>()
+    let memory_needed = size_of::<Header>()
         + hash_table_size // requires align 4, maintains align 4
         + stroke_prefix_lookup_size // requires align 4, maintains align 4
         + stroke_subindices_size // requires align 2, maintains align 2
@@ -219,8 +222,8 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> 
         // cleanly when we are done here.
 
         let mut offset = 0;
-        offset_info = &mut *((new_memory_start + offset) as *mut Offsets);
-        offset += size_of::<Offsets>();
+        offset_info = &mut *((new_memory_start + offset) as *mut Header);
+        offset += size_of::<Header>();
 
         hash_table = core::slice::from_raw_parts_mut(
             (new_memory_start + offset) as *mut usize,
@@ -275,6 +278,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> 
 
     // also store our offset_info
     // length of the hash table is given by the start of stroke_index
+    offset_info.version = FORMAT_VERSION;
     offset_info.hash_table = hash_table.as_ptr() as usize - new_memory_start;
     offset_info.stroke_index = stroke_prefix_lookup.as_ptr() as usize - new_memory_start;
     offset_info.definitions = definitions.as_ptr() as usize - new_memory_start;
@@ -793,7 +797,11 @@ extern { fn yield_result(string_offset: u32, string_length: u32, stroke_offset: 
 #[no_mangle]
 pub unsafe extern fn query(offset: u32, length: u32, data_offset: usize, find_stroke: u8) {
 
-    let offset_info = &*(data_offset as *const Offsets);
+    let offset_info = &*(data_offset as *const Header);
+    if offset_info.version != FORMAT_VERSION {
+        log_err_internal((b"Stored dictionary is in an old format. Please remove the current dictionary and load it back in to store it in the current format.".as_ref(), line!()));
+        panic!();
+    }
     let hashmap_size = offset_info.stroke_index - offset_info.hash_table;
     let hashmap = core::slice::from_raw_parts(
         (offset_info.hash_table + data_offset) as *const usize,

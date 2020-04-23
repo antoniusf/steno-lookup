@@ -10,6 +10,7 @@
     let input_element;
 
     let results;
+    let error_msg;
 
     // we have to do this manually, since bind and reactivity
     // do not support bi-directional data flow
@@ -39,7 +40,14 @@
     }
 
     async function doQuery() {
-	results = dictionary.find_stroke(stroke);
+	error_msg = undefined;
+	try {
+	    results = dictionary.find_stroke(stroke);
+	}
+	catch (e) {
+	    results = undefined;
+	    error_msg = e;
+	}
     }
 </script>
 
@@ -56,4 +64,10 @@
 <StrokeDisplay bind:stroke on:strokeChanged={onStrokeChanged}/>
 
 <input type="text" on:input={onInput} bind:this={input_element} />
-<ResultsTable results={results} />
+{#if results}
+  <ResultsTable results={results} />
+{:else}
+  {#if error_msg}
+    <p>{error_msg}</p>
+  {/if}
+{/if}

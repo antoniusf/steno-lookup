@@ -56,15 +56,21 @@ async function instanciate(module) {
 
     // i'm going to try and do the same thing with the results array
     let results = [];
+    let last_error;
     
     function logErr (offset, length, line) {
 	if (memory) {
 	    const buffer = new Uint8Array(memory.buffer, offset, length);
 	    console.log("WebAssembly module panicked with '" + text_decoder.decode(buffer) + "' on line " + line + "\nraw buffer: " + buffer);
+	    last_error = text_decoder.decode(buffer);
 	}
 	else {
 	    console.log("Warning: logErr got called, but memory was not initialized??");
 	}
+    }
+
+    function get_last_error () {
+	return last_error;
     }
 
     // strokes_offset is a ptr, strokes_length is in units of the contained type (ie 4 bytes)
@@ -80,7 +86,7 @@ async function instanciate(module) {
     // store reference to memory so that logErr (and yield_result) work
     memory = instance.exports.memory;
 
-    return {instance: instance, results: results};
+    return {instance: instance, results: results, get_last_error: get_last_error};
 }
 
 function prepare_instance_for_querying(instance_info, dictionary_data) {
@@ -121,9 +127,21 @@ function prepare_instance_for_querying(instance_info, dictionary_data) {
 	// clear results in place
 	// this is necessary since it is captured by the yield_results function, so we can't reassign
 	results.splice(0, results.length);
-	instance.exports.query(query_start, encoded_query.length,
-			    data_start,
-			    0);
+	try {
+	    instance.exports.query(query_start, encoded_query.length,
+				data_start,
+				0);
+	}
+	catch (e) {
+	    let last_error = instance_info.get_last_error();
+	    if (last_error) {
+		throw `Error in WebAssembly module: ${last_error} (${e})`;
+	    }
+	    else {
+		throw `Error in WebAssembly module: ${e} (this probably shouldn't have happened)`;
+	    }
+	}
+	    
 	console.log(`query took ${performance.now() - start}ms`);
 	// make a copy, so that the caller can't accidentally mess with our data
 	return results.slice();
@@ -135,9 +153,20 @@ function prepare_instance_for_querying(instance_info, dictionary_data) {
 	// this is necessary since it is captured by the yield_results function, so we can't reassign
 	results.splice(0, results.length);
 	const start = performance.now();
-	instance.exports.query(stroke, 0,
-			    data_start,
-			    1);
+	try {
+	    instance.exports.query(stroke, 0,
+				data_start,
+				1);
+	}
+	catch (e) {
+	    let last_error = instance_info.get_last_error();
+	    if (last_error) {
+		throw `Error in WebAssembly module: ${last_error} (${e})`;
+	    }
+	    else {
+		throw `Error in WebAssembly module: ${e} (this probably shouldn't have happened)`;
+	    }
+	}
 	console.log(`query took ${performance.now() - start}ms`);
 	// make a copy, so that the caller can't accidentally mess with our data
 	return results.slice();
@@ -154,7 +183,8 @@ export async function loadJson (json) {
     // make sure we have a wasm module loaded
     initialize();
     
-    const wasm = (await instanciate(global_module)).instance;
+    const instance_info = await instanciate(global_module);
+    const wasm = instance_info.instance;
     const data = text_encoder.encode(json);
 
     const pages_needed = Math.ceil(data.length / wasm_page_size);
@@ -168,12 +198,26 @@ export async function loadJson (json) {
     memoryarray.subarray(base_offset, base_offset + data.length).set(data);
 
     console.log("before wasm");
-    const start = performance.now()
-    const info_ptr = wasm.exports.load_json(base_offset, data.length);
+    const start = performance.now();
+    let info_ptr;
+    try {
+	info_ptr = wasm.exports.load_json(base_offset, data.length);
+    }
+    // TODO: unify error handling
+    catch (e) {
+	let last_error = instance_info.get_last_error();
+	if (last_error) {
+	    throw `Error in WebAssembly module: ${last_error} (${e})`;
+	}
+	else {
+	    throw `Error in WebAssembly module: ${e} (this probably shouldn't have happened)`;
+	}
+    }
     console.log(`after wasm (took ${performance.now() - start}ms)`);
 
-    const lengths = new Uint32Array(wasm.exports.memory.buffer, info_ptr, 4);
-    const data_length = lengths[3];
+    // this matches the Header struct in lib.rs
+    const lengths = new Uint32Array(wasm.exports.memory.buffer, info_ptr, 5);
+    const data_length = lengths[4];
 
     console.log(`data length: ${data_length}`);
 
