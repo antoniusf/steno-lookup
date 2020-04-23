@@ -23,7 +23,7 @@ this is a small and lightweight app i made that lets you look up definitions fro
 
 you'll need [node](https://nodejs.org) for the main app, and [rust](https://www.rust-lang.org/) for the wasm module. optionally, you can also install wasm-strip from the [webassembly binary toolkit](https://github.com/WebAssembly/wabt) to make the resulting wasm file smaller.
 
-the main app is based on the project template for [svelte](https://svelte.dev) apps from https://github.com/sveltejs/template. i've included the relevant parts from their readme below.
+the main app is based on the project template for [svelte](https://svelte.dev) apps from https://github.com/sveltejs/template. i've included the relevant section from their readme below.
 
 ### Get started
 
