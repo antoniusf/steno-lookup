@@ -66,7 +66,7 @@
               let filereader = new FileReader();
               filereader.addEventListener("load", event => finishReadFile(filereader));
               filereader.addEventListener("progress", event => {
-		  readprogress = Math.floor(event.loaded / event.total * 100);
+		  let readprogress = Math.floor(event.loaded / event.total * 100);
 		  status_message = `Loading... ${readprogress}%`;
 	      });
               filereader.addEventListener("abort", event => { status = "error"; big_status_message = "Aborted."; small_status_message = ""; });
