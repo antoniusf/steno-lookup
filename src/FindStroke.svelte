@@ -49,7 +49,12 @@
 	}
 	catch (e) {
 	    results = undefined;
-	    error_msg = e;
+	    if (!e.message) {
+	        error_msg = { message: e.toString() };
+	    }
+	    else {
+		error_msg = e;
+	    }
 	}
     }
 </script>
@@ -62,6 +67,11 @@
     border: 1px solid #777;
     padding: 0.3em 0.6em;
   }
+
+  p#smallerror {
+    margin-top: 0.5em;
+    font-size: 0.8rem;
+  }
 </style>
 
 <StrokeDisplay bind:stroke on:strokeChanged={onStrokeChanged}/>
@@ -71,6 +81,11 @@
   <ResultsTable results={results} />
 {:else}
   {#if error_msg}
-    <p>{error_msg}</p>
+    <p id="bigerror">{error_msg.message}</p>
+    {#if error_msg.details}
+      <p id="smallerror">{error_msg.details}</p>
+    {/if}
+  {:else}
+    <p>query running...</p>
   {/if}
 {/if}

@@ -17,7 +17,12 @@
 	}
 	catch (e) {
 	    query_result = undefined;
-	    error_msg = e;
+	    if (!e.message) {
+	        error_msg = { message: e.toString() };
+	    }
+	    else {
+		error_msg = e;
+	    }
 	}
     }
 
@@ -36,6 +41,12 @@
       margin: 0;
       padding: 0;
     }
+
+    p#smallerror {
+      margin-top: 0.5em;
+      font-size: 0.8rem;
+    }
+    
 </style>
 
 <input type="text" bind:value={query}/>
@@ -43,7 +54,10 @@
   <ResultsTable results={query_result}/>
 {:else}
   {#if error_msg}
-    <p>{error_msg}</p>
+    <p id="bigerror">{error_msg.message}</p>
+    {#if error_msg.details}
+      <p id="smallerror">{error_msg.details}</p>
+    {/if}
   {:else}
     <p>query running...</p>
   {/if}

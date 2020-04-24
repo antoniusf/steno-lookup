@@ -62,11 +62,16 @@ async function instanciate(module) {
     let results = [];
     let last_error;
     
-    function logErr (offset, length, line) {
+    function logErr (message_offset, message_length, details_offset, details_length, line) {
 	if (memory) {
-	    const buffer = new Uint8Array(memory.buffer, offset, length);
-	    console.log("WebAssembly module panicked with '" + text_decoder.decode(buffer) + "' on line " + line + "\nraw buffer: " + buffer);
-	    last_error = text_decoder.decode(buffer);
+	    const message_buffer = new Uint8Array(memory.buffer, message_offset, message_length);
+	    const details_buffer = new Uint8Array(memory.buffer, details_offset, details_length);
+
+	    const message = text_decoder.decode(message_buffer);
+	    const details = text_decoder.decode(details_buffer);
+	    
+	    console.log(`WebAssembly module panicked with '${message} (${details})' on line ${line}`);
+	    last_error = { message: message, details: details };
 	}
 	else {
 	    console.log("Warning: logErr got called, but memory was not initialized??");
@@ -139,7 +144,7 @@ function prepare_instance_for_querying(instance_info, dictionary_data) {
 	catch (e) {
 	    let last_error = instance_info.get_last_error();
 	    if (last_error) {
-		throw `Error in WebAssembly module: ${last_error} (${e})`;
+		throw last_error;
 	    }
 	    else {
 		throw `Error in WebAssembly module: ${e} (this probably shouldn't have happened)`;
@@ -165,7 +170,7 @@ function prepare_instance_for_querying(instance_info, dictionary_data) {
 	catch (e) {
 	    let last_error = instance_info.get_last_error();
 	    if (last_error) {
-		throw `Error in WebAssembly module: ${last_error} (${e})`;
+		throw last_error;
 	    }
 	    else {
 		throw `Error in WebAssembly module: ${e} (this probably shouldn't have happened)`;
@@ -211,7 +216,7 @@ export async function loadJson (json) {
     catch (e) {
 	let last_error = instance_info.get_last_error();
 	if (last_error) {
-	    throw `Error in WebAssembly module: ${last_error} (${e})`;
+	    throw last_error;
 	}
 	else {
 	    throw `Error in WebAssembly module: ${e} (this probably shouldn't have happened)`;

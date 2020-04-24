@@ -10,13 +10,13 @@ extern crate wyhash;
 use wyhash::wyhash;
 
 #[link(wasm_import_module = "env")]
-extern { fn logErr(offset: u32, length: u32, line: u32); }
+extern { fn logErr(message_offset: u32, message_length: u32, details_offset: u32, details_length: u32, line: u32); }
 
-fn log_err_internal(message: (&[u8], u32)) {
-    let string = message.0;
-    let line = message.1;
+fn log_err_internal(error: InternalError) {
     unsafe {
-        logErr(string.as_ptr() as u32, string.len() as u32, line);
+        logErr(error.message.as_ptr() as u32, error.message.len() as u32,
+               error.details.as_ptr() as u32, error.details.len() as u32,
+               error.line);
     }
 }
 
@@ -38,15 +38,34 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
     }
 }
 
-fn handle_loader_error(error: (&[u8], u32)) -> usize {
+fn handle_loader_error(error: InternalError) -> usize {
     log_err_internal(error);
     panic!();
 }
 
 struct InternalError<'a> {
+    // message is the part of the error that's meant to be
+    // simple, so everyone can understand it.
     message: &'a [u8],
-    line: usize
+    // details is the part of the error that's meant to give
+    // more precise information on what went wrong.
+    details: &'a [u8],
+    line: u32
 }
+
+type InternalResult<T> = Result<T, InternalError<'static>>;
+
+macro_rules! error {
+    ($message:expr, $details:expr) => {
+        InternalError {
+            message: $message.as_ref(),
+            details: $details.as_ref(),
+            line: line!()
+        }
+    };
+}
+
+static PARSER_ERROR: &'static [u8; 83] = b"Sorry, we couldn't load your dictionary because we don't understand its formatting.";
 
 #[no_mangle]
 pub unsafe extern fn load_json(offset: u32, length: u32) -> u32 {
@@ -75,7 +94,7 @@ struct StrokeIndexEntry {
 const FORMAT_VERSION: u32 = 0x00_01_00_00;
 
 // loads a json array into our custom memory format.
-pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> {
+fn load_json_internal(mut buffer: &mut [u8]) -> InternalResult<usize> {
     // in-place parsing turned out to not be possible in the end.
     // so, we're not going to do it.
     //
@@ -125,7 +144,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> 
 
     // INVARIANT: read_pos >= write_pos
 
-    skip_whitespace(buffer, &mut read_pos).or(Err((b"Parser error: no data found".as_ref(), line!())))?;
+    skip_whitespace(buffer, &mut read_pos).or(Err(error!(PARSER_ERROR, b"Parser error: no data found")))?;
     expect_char(buffer, &mut read_pos, b'{')?;
     
     // INVARIANT: read_pos >= write_pos + 1
@@ -167,7 +186,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> Result<usize, (&[u8], u32)> 
 
         skip_whitespace(buffer, &mut read_pos)?;
 
-        let byte = buffer.get(read_pos).ok_or((b"Parser error: data incomplete".as_ref(), line!()))?;
+        let byte = buffer.get(read_pos).ok_or(error!(PARSER_ERROR, b"Parser error: data incomplete"))?;
         if *byte == b'}' {
             // reached file end
             read_pos += 1;
@@ -444,7 +463,7 @@ fn stroke_index_sortkey(entry: &StrokeIndexEntry) -> u16 {
     entry.last_two_bytes
 }
 
-fn add_to_hash_table(string: &[u8], mut value: usize, hash_table: &mut [usize], probe_counts: &mut [u32]) -> Result<(), (&'static [u8], u32)> {
+fn add_to_hash_table(string: &[u8], mut value: usize, hash_table: &mut [usize], probe_counts: &mut [u32]) -> InternalResult<()> {
 
     let hash = wyhash(string, 1);
     let mut index = (hash as usize) % hash_table.len();
@@ -486,7 +505,7 @@ fn add_to_hash_table(string: &[u8], mut value: usize, hash_table: &mut [usize], 
 // otherwise, it is the number of bytes in the string plus one (for the null terminator).
 // if is_strokes is true, it will also ensure that the string is free of escape sequences (and thus quotes)
 // and terminate it with a double quote instead of NULL, since that is what parse_strokes needs.
-fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut usize, is_strokes: bool) -> Result<usize, (&'a [u8], u32)> {
+fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut usize, is_strokes: bool) -> InternalResult<usize> {
 
     // EXPECTATION: read_pos >= write_pos
 
@@ -506,7 +525,7 @@ fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut us
     let mut escape_next = false;
 
     loop {
-        let byte = *buffer.get(*read_pos).ok_or((b"Parser error: data ended in the middle of string".as_ref(), line!()))?;
+        let byte = *buffer.get(*read_pos).ok_or(error!(PARSER_ERROR, b"Parser error: data ended in the middle of string"))?;
         *read_pos += 1;
 
         if escape_next {
@@ -533,7 +552,7 @@ fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut us
                 if is_strokes {
                     // the stroke parser can't handle those, so we have to make sure
                     // they won't be in there.
-                    return Err((b"Parser error: escape sequence found in stroke definition", line!()));
+                    return Err(error!(PARSER_ERROR, b"Parser error: escape sequence found in stroke definition"));
                 }
                 escape_next = true;
             }
@@ -567,7 +586,7 @@ fn rewrite_string<'a>(buffer: &mut[u8], read_pos: &mut usize, write_pos: &mut us
     }
 }
 
-fn skip_whitespace(buffer: &[u8], pos: &mut usize) -> Result<(), (&'static [u8], u32)> {
+fn skip_whitespace(buffer: &[u8], pos: &mut usize) -> InternalResult<()> {
     while let Some(&byte) = buffer.get(*pos) {
         if byte != b' '
             && byte != b'\t'
@@ -581,10 +600,10 @@ fn skip_whitespace(buffer: &[u8], pos: &mut usize) -> Result<(), (&'static [u8],
 
         *pos += 1;
     }
-    return Err((b"Parser error: data incomplete", line!()));
+    return Err(error!(PARSER_ERROR, b"Parser error: data incomplete"));
 }
 
-fn expect_char(buffer: &[u8], pos: &mut usize, expected: u8) -> Result<(), (&'static [u8], u32)> {
+fn expect_char(buffer: &[u8], pos: &mut usize, expected: u8) -> InternalResult<()> {
     if let Some(byte) = buffer.get(*pos) {
         if *byte == expected {
             *pos += 1;
@@ -598,16 +617,16 @@ fn expect_char(buffer: &[u8], pos: &mut usize, expected: u8) -> Result<(), (&'st
             let mut formatted_message = *message;
             formatted_message[24] = expected;
             formatted_message[37] = *byte;
-            log_err_internal((&formatted_message, line!()));
-            return Err((message, line!()));
+            log_err_internal(error!(PARSER_ERROR, &formatted_message));
+            return Err(error!(PARSER_ERROR, message));
         }
     }
     else {
         let message = b"Parser error: expected '$', but hit the end of data";
         let mut formatted_message = *message;
         formatted_message[24] = expected;
-        log_err_internal((&formatted_message, line!()));
-        return Err((message, line!()));
+        log_err_internal(error!(PARSER_ERROR, &formatted_message));
+        return Err(error!(PARSER_ERROR, message));
     }
 }
 
@@ -765,12 +784,13 @@ static PARSE_STROKE_TABLE: [u32; 128] = [
 // pos is a pointer, so the calling code can pick up
 // where we left off
 // TODO: what about zero-length strokes or other malformed input?
-fn parse_stroke_fast(buffer: &[u8], pos: &mut usize) -> Result<u32, (&'static [u8], u32)> {
+fn parse_stroke_fast(buffer: &[u8], pos: &mut usize) -> InternalResult<u32> {
 
     let mut state = 0;
     let mut stroke = 0;
     while (state & (1 << 7)) == 0 {
-        let byte = *buffer.get(*pos).ok_or((b"Parser error: Reached end of data while reading stroke (in parse_stroke_fast)".as_ref(), line!()))?;
+        let byte = *buffer.get(*pos).ok_or(
+            error!(PARSER_ERROR, b"Parser error: Reached end of data while reading stroke (in parse_stroke_fast)"))?;
         *pos += 1;
 
         // first, cast up to u32, since we'll have to go up anyways.
@@ -803,7 +823,7 @@ pub unsafe extern fn query(offset: u32, length: u32, data_offset: usize, find_st
 
     let offset_info = &*(data_offset as *const Header);
     if offset_info.version != FORMAT_VERSION {
-        log_err_internal((b"Stored dictionary is in an old format. Please remove the current dictionary and load it back in to store it in the current format.".as_ref(), line!()));
+        log_err_internal(error!(b"Dictionary format mismatch! Please remove the current dictionary and load it back in to store it in the current format.", b""));
         panic!();
     }
     let hashmap_size = offset_info.stroke_index - offset_info.hash_table;
@@ -844,7 +864,7 @@ pub unsafe extern fn query(offset: u32, length: u32, data_offset: usize, find_st
     }
 }
 
-fn query_internal(query: &[u8], hashmap: &[usize], definitions: &[u8]) -> Result<(), (&'static [u8], u32)> {
+fn query_internal(query: &[u8], hashmap: &[usize], definitions: &[u8]) -> InternalResult<()> {
 
     let hash = wyhash(query, 1);
     let mut index = (hash as usize) % hashmap.len();
@@ -895,7 +915,7 @@ fn query_internal(query: &[u8], hashmap: &[usize], definitions: &[u8]) -> Result
     return Ok(());
 }
 
-fn find_stroke_internal(mut query_stroke: u32, stroke_prefix_lookup: &[usize], stroke_subindices: &[StrokeIndexEntry], definitions: &[u8]) -> Result<(), (&'static [u8], u32)> {
+fn find_stroke_internal(mut query_stroke: u32, stroke_prefix_lookup: &[usize], stroke_subindices: &[StrokeIndexEntry], definitions: &[u8]) -> InternalResult<()> {
 
     // currently, we're storing the strokes with the last stroke marker,
     // so we'll have to add that in
