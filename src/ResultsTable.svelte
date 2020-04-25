@@ -26,10 +26,19 @@
     td.strokes {
       font-family: Courier, monospace;
     }
+
+    p {
+      padding: 0;
+      margin: 0.1em 0 0.4em;
+    }
 </style>
 
-<table>
-  {#each results as [strokes, translation]}
-    <tr><td class="strokes">{strokes}</td><td>{translation}</td></tr>
-  {/each}
-</table>
+{#if results.length == 0}
+  <p>(no results)</p>
+{:else}
+  <table>
+    {#each results as [strokes, translation]}
+      <tr><td class="strokes">{strokes}</td><td>{translation}</td></tr>
+    {/each}
+  </table>
+{/if}

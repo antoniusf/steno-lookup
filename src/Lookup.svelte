@@ -6,14 +6,16 @@
     
     export let dictionary;
     let query = "";
-    let query_result;
+    let query_result = [];
     let error_msg;
 
     $: doQuery(query)
     function doQuery(query) {
 	error_msg = undefined;
+	query_result = undefined;
 	try {
 	    query_result = dictionary.lookup(query);
+	    console.log("asdf " + query_result);
 	}
 	catch (e) {
 	    query_result = undefined;
@@ -50,7 +52,7 @@
 </style>
 
 <input type="text" bind:value={query}/>
-{#if query_result}
+{#if query_result !== undefined}
   <ResultsTable results={query_result}/>
 {:else}
   {#if error_msg}
@@ -58,7 +60,5 @@
     {#if error_msg.details}
       <p id="smallerror">{error_msg.details}</p>
     {/if}
-  {:else}
-    <p>query running...</p>
   {/if}
 {/if}

@@ -12,7 +12,7 @@
     let current_text = "";
     let input_element;
 
-    let results;
+    let results = [];
     let error_msg;
 
     // we have to do this manually, since bind and reactivity
@@ -44,6 +44,7 @@
 
     async function doQuery() {
 	error_msg = undefined;
+	query_result = undefined;
 	try {
 	    results = dictionary.find_stroke(stroke);
 	}
@@ -77,7 +78,7 @@
 <StrokeDisplay bind:stroke on:strokeChanged={onStrokeChanged}/>
 
 <input type="text" on:input={onInput} bind:this={input_element} />
-{#if results}
+{#if results !== undefined}
   <ResultsTable results={results} />
 {:else}
   {#if error_msg}
@@ -85,7 +86,5 @@
     {#if error_msg.details}
       <p id="smallerror">{error_msg.details}</p>
     {/if}
-  {:else}
-    <p>query running...</p>
   {/if}
 {/if}
