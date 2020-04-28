@@ -1,5 +1,5 @@
 {
-  "name": "svelte-app",
+  "name": "steno-lookup",
   "version": "0.0.14",
   "scripts": {
     "build": "rollup -c",
