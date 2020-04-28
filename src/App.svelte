@@ -21,15 +21,6 @@
 
     const VERSION_UNKNOWN = Symbol("version_unknown");
 
-    let fmt = (val) => {
-	if (val === undefined) {
-	    return "undefined";
-	}
-	else {
-	    return val.toString();
-	}
-    }
-
     get("user-knows-about-this-version").then(result => {
 	if (result) {
 	    update_info.user_knows_about_this_version = result;
@@ -75,14 +66,9 @@
 		    }
                 }
                 else if (event.data.status == "installed") {
-		    console.log("event data");
-		    console.log(event.data);
                     update_info.update_available = false;
 		    update_info.user_knows_about_this_version = event.data.version;
 		    set("user-knows-about-this-version", event.data.version);
-
-		    console.log(`version: ${event.data.version}`);
-		    console.log(update_info.user_knows_about_this_version);
 
                     window.location.reload();
                 }
@@ -112,7 +98,6 @@
         }
         else if (status == 'query' || status == 'find-stroke') {
             status = 'load-dict';
-	    console.log(update_info);
 	    if (update_info.new_version) {
 		if (update_info.user_knows_about_this_version != update_info.new_version) {
 		    // well, they know now
@@ -164,7 +149,6 @@
   </main>
 
   <p id="version-info">App version: __version__<br>Service worker version: {serviceworker_version}<br>File a bug or contribute to development on <a href="https://github.com/antoniusf/steno-lookup" target="_blank">github</a></p>
-<p style="font-size:0.8rem">user knows: {fmt(update_info.user_knows_about_this_version).slice(0, 9)} <br/> upstream: {fmt(update_info.new_version).slice(0, 9)}</p>
 </div>
 
 <style>
