@@ -113,13 +113,16 @@ async function checkForUpdates() {
         await set("date-checked", date);
         await set("update-available", update_available);
         await set("update-size", version_info.size);
+	await set("upstream-version", upstream_version);
 
 	console.log("local version: " + local_version + " / upstream version " + upstream_version)
 	await notifyClients({
             type: "update-info",
             status: (update_available)? "available":"up-to-date",
             date_checked: date,
-            update_size: version_info.size
+            update_size: version_info.size,
+	    new_version: upstream_version,
+	    current_version: local_version,
         });
 
 	end = performance.now();
@@ -214,7 +217,7 @@ async function installNewestVersion() {
 	text: "Done! Your page should reload now."
     });
 
-    notifyClients({ type: "update-info", status: "installed", last_checked: new Date() });
+    notifyClients({ type: "update-info", status: "installed", last_checked: new Date(), current_version: upstream_version });
 }
 
 async function notifyClients (message) {
@@ -283,11 +286,10 @@ self.addEventListener('message', async (event) => {
     if (event.data == "get-version") {
 	event.source.postMessage({
             type: "version-info",
-            serviceworker_version: "friday-lite-0.23"
+            serviceworker_version: "friday-lite-0.24"
         });
     }
     else if (event.data == "check-for-updates") {
-	console.log("hello");
 	event.source.postMessage({
 	    type: "serviceworker-info",
 	    text: "Checking..."
@@ -328,7 +330,9 @@ self.addEventListener('message', async (event) => {
             type: "update-info",
             status: update_available? "available":"up-to-date",
             date_checked: await get("date-checked"),
-            update_size: await get("update-size")
+            update_size: await get("update-size"),
+	    new_version: await get("upstream-version"),
+	    current_version: await get("local-version"),
         });
     }
 });

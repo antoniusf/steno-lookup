@@ -3,15 +3,14 @@
    - file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
 <script>
   // TODO: move updater into its own separate element
-  import { createEventDispatcher, onMount } from 'svelte';
+  import { onMount } from 'svelte';
   import { set, get, del } from 'idb-keyval';
   import { textToStroke, strokeToText, formatFilesize } from './util';
   import { initialize, loadJson } from './wasm-interface.js';
 
-  const dispatch = createEventDispatcher();
-
   export let dictionary;
   export let status;
+  export let app_status;
   export let update_info;
 
   let big_status_message = "";
@@ -40,7 +39,7 @@
 	    }
 	    dictionary.name = stored_dictionary.name;
             status = "loaded";
-            signalDone();
+	    app_status = "query";
         }
       }
   });
@@ -67,7 +66,7 @@
               filereader.addEventListener("load", event => finishReadFile(filereader));
               filereader.addEventListener("progress", event => {
 		  let readprogress = Math.floor(event.loaded / event.total * 100);
-		  status_message = `Loading... ${readprogress}%`;
+		  big_status_message = `Loading... ${readprogress}%`;
 	      });
               filereader.addEventListener("abort", event => { status = "error"; big_status_message = "Aborted."; small_status_message = ""; });
               filereader.addEventListener("error", event => { status = "error"; big_status_message = "Your browser failed to load the file. Please try again."; small_status_message = ""; });
@@ -100,21 +99,15 @@
       await set("dictionary", { name: dictionary.name, data: dictionary.data });
 
       status = "loaded";
+      app_status = "query";
       big_status_message = "";
       small_status_message = "";
-      signalDone();
   }
 
   async function removeDict (event) {
       dictionary = null;
       await del("dictionary");
       status = "choosefile";
-  }
-
-  function signalDone () {
-      dispatch("message", {
-	  status: "done"
-      });
   }
 
   const date_formatter = new Intl.DateTimeFormat(undefined, {
@@ -226,7 +219,7 @@ h2 {
     }
     </p>
                   
-    <button on:click={event => navigator.serviceWorker.controller.postMessage("check-for-updates")}>Check</button>
+    <button on:click={event => navigator.serviceWorker.controller.postMessage("check-for-updates-user")}>Check</button>
   {/if}
 </div>
 {#if (update_info.serviceworker_info)}

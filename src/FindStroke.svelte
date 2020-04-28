@@ -44,7 +44,7 @@
 
     async function doQuery() {
 	error_msg = undefined;
-	query_result = undefined;
+	results = undefined;
 	try {
 	    results = dictionary.find_stroke(stroke);
 	}
