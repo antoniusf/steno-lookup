@@ -192,6 +192,7 @@ h2 {
 
   {#if status == "choosefile"}
     <p>Please choose a dictionary from your device.</p>
+    <p id="smallstatus">The dictionary will be stored inside of your browser, so you can access it when you load this page the next time. It will stay on your device only, and will not be sent anywhere else.</p>
   {:else if (status == "error") || (status == "reading")}
     <p>{big_status_message}</p>
     {#if small_status_message}
