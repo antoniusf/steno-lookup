@@ -145,6 +145,12 @@ button {
   cursor: pointer;
 }
 
+button:focus {
+  background-color: white;
+  border: 0.1em solid black;
+  color: black;
+}
+
 div#loaded {
   display: flex;
   margin: 0;

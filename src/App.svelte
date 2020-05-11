@@ -193,6 +193,16 @@
       padding: 0;
     }
 
+    button:focus {
+      background-color: white;
+      border: 0.1em solid black;
+      color: black;
+    }
+
+    button:focus > img {
+      filter: brightness(0.0);
+    }
+
     button:disabled {
       background-color: #aaa;
     }
@@ -202,7 +212,7 @@
       height: 100%;
     }
 
-    button.selected {
+    button.selected:not(:focus) {
       background-color: black;
     }
     
