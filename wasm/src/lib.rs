@@ -179,7 +179,7 @@ impl<'a> Write for WriteBuffer<'a> {
     }
 }
 
-const FORMAT_VERSION: u32 = 0x00_01_00_01;
+const FORMAT_VERSION: u32 = 0x00_01_00_02;
 
 // loads a json array into our custom memory format.
 fn load_json_internal(mut buffer: &mut [u8]) -> InternalResult<usize> {
@@ -289,7 +289,7 @@ fn load_json_internal(mut buffer: &mut [u8]) -> InternalResult<usize> {
     // we can now compute the sizes for all of the necessary data structures
     // and allocate them.
 
-    let hash_table_load_factor = 0.85;
+    let hash_table_load_factor = 10.0;
     let hash_table_length = (num_definitions as f64 / hash_table_load_factor) as usize;
     let hash_table_size = hash_table_length * size_of::<usize>();
 
