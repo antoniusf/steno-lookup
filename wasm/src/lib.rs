@@ -5,6 +5,7 @@
 #![no_std]
 
 use core::mem::size_of;
+use core::fmt::Write;
 
 extern crate wyhash;
 use wyhash::wyhash;
@@ -22,17 +23,21 @@ fn log_err_internal(error: InternalError) {
 
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
-    //if let Some(string) = info.payload().downcast_ref::<&str>() {
-    //    unsafe {
-    //        logErr(string.as_ptr() as u32, string.len() as u32, info.location().map_or(0, |loc| loc.line()));
-    //    }
-    //}
-    //else {
-    //    let string = "Panic occured, but we didn't get a usable payload.";
-    //    unsafe {
-    //        logErr(string.as_ptr() as u32, string.len() as u32, info.location().map_or(0, |loc| loc.line()));
-    //    }
-    //}
+
+    // this is for debugging only
+    // (the formatting code adds about 10kB to the wasm executable,
+    // and i don't think it's useful in production.)
+    //
+    // let mut message = [0u8; 200];
+    // let mut buffer = WriteBuffer { buffer: &mut message[..], position: 0 };
+    // write!(buffer, "{}", info);
+    // let end = message.iter().position(|&byte| byte == 0).unwrap_or(message.len());
+    // 
+    // log_err_internal(InternalError {
+    //     message: &message[..end],
+    //     details: b"".as_ref(),
+    //     line: info.location().map_or(0, |loc| loc.line())
+    // });
     unsafe {
         core::arch::wasm32::unreachable();
     }
@@ -91,7 +96,90 @@ struct StrokeIndexEntry {
     definition_offset: usize
 }
 
-const FORMAT_VERSION: u32 = 0x00_01_00_00;
+struct Definition<'a> { 
+    string: &'a [u8],
+    strokes: &'a [u8]
+}
+
+struct BucketEntryIterator<'a> {
+    buffer: &'a [u8],
+    position: usize,
+    last_definition_read: bool
+}
+
+impl<'a> BucketEntryIterator<'a> {
+    /// Makes a new iterator
+    ///
+    /// # Arguments
+    ///
+    /// * `bucket` – slice of the underlying definitions buffer. the start of the
+    /// slice must correspond to the start of the bucket, but the end of the slice
+    /// can be beyond the end of the bucket, since this can detect the end itself.
+    fn new(bucket: &'a [u8]) -> BucketEntryIterator<'a> {
+        BucketEntryIterator { buffer: bucket, position: 0, last_definition_read: false }
+    }
+
+    fn get_next_free_slot(&self) -> Option<usize> {
+        if self.last_definition_read {
+            return Some(self.position);
+        }
+        else {
+            return None;
+        }
+    }
+}
+
+impl<'a> Iterator for BucketEntryIterator<'a> {
+    type Item = &'a [u8];
+
+    fn next(&mut self) -> Option<Self::Item> {
+
+        if self.last_definition_read {
+            return None;
+        }
+
+        let header = (self.buffer[self.position] as u16) | ((self.buffer[self.position + 1] as u16) << 8);
+        let is_last = header >> 15 == 1;
+        let length = (header & ((1 << 15) - 1)) as usize;
+        let definition = &self.buffer[self.position + 2 .. self.position + length];
+
+        self.position += length;
+
+        if is_last {
+            self.last_definition_read = true;
+        }
+
+        return Some(definition);
+    }
+}
+
+// the sole purpose of this is so I can use write! for debugging
+// (no, simple &mut [u8]s won't work, since those can be written to
+//  but only using std::io::Write, which we can't use in no_std
+struct WriteBuffer<'a> {
+    buffer: &'a mut [u8],
+    position: usize
+}
+
+impl<'a> Write for WriteBuffer<'a> {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        let bytes = s.as_bytes();
+        let space_remaining = self.buffer.len() - self.position;
+        
+        if space_remaining >= bytes.len() {
+            &self.buffer[self.position .. self.position + bytes.len()]
+                .copy_from_slice(bytes);
+
+            self.position += bytes.len();
+            Ok(())
+        }
+        else {
+            Err(core::fmt::Error)
+        }
+    }
+}
+
+const FORMAT_VERSION: u32 = 0x00_01_00_01;
 
 // loads a json array into our custom memory format.
 fn load_json_internal(mut buffer: &mut [u8]) -> InternalResult<usize> {
@@ -183,6 +271,8 @@ fn load_json_internal(mut buffer: &mut [u8]) -> InternalResult<usize> {
         //  don't need these, so this is how it's going to stay.)
 
         num_definitions += 1;
+        // each definition gets an extra 2 bytes for its header
+        definitions_size += 2;
 
         skip_whitespace(buffer, &mut read_pos)?;
 
@@ -202,8 +292,6 @@ fn load_json_internal(mut buffer: &mut [u8]) -> InternalResult<usize> {
     let hash_table_load_factor = 0.85;
     let hash_table_length = (num_definitions as f64 / hash_table_load_factor) as usize;
     let hash_table_size = hash_table_length * size_of::<usize>();
-    let probe_count_array_length = hash_table_length;
-    let probe_count_array_size = probe_count_array_length * size_of::<u32>();
 
     // determine the length of the stroke index
     // stroke_index_subindex_lengths contains the length of each subindex,
@@ -217,8 +305,7 @@ fn load_json_internal(mut buffer: &mut [u8]) -> InternalResult<usize> {
         + hash_table_size // requires align 4, maintains align 4
         + stroke_prefix_lookup_size // requires align 4, maintains align 4
         + stroke_subindices_size // requires align 2, maintains align 2
-        + definitions_size // requires align 1, maintains align 1
-        + probe_count_array_size; // this is a helper for hash table creation, it will be deleted when we are done
+        + definitions_size; // requires align 1, maintains align 1
 
     let wasm_page_size = 65536;
     // this is just a rounding-up division for ints.
@@ -232,7 +319,6 @@ fn load_json_internal(mut buffer: &mut [u8]) -> InternalResult<usize> {
     let stroke_prefix_lookup;
     let stroke_subindices;
     let definitions;
-    let probe_count_array;
     let mut offset_info;
 
     unsafe {
@@ -276,27 +362,17 @@ fn load_json_internal(mut buffer: &mut [u8]) -> InternalResult<usize> {
 
         offset += definitions_size;
 
-        // re-align the pointer, since entry_array doesn't
-        // preserve alignment
-
-        let u32_align = core::mem::align_of::<u32>();
-        offset = (offset + u32_align - 1) & !(u32_align - 1);
-        
-        probe_count_array = core::slice::from_raw_parts_mut(
-            (new_memory_start + offset) as *mut u32,
-            probe_count_array_length
-        );
-        
-        offset += probe_count_array_size;
-
         // whew
     }
 
     // initialization
     // hash_table is a sparse structure, so
     // we'll need to initialize it.
+    //
+    // this pass: the hash table will store the size of each of the
+    // bucket entry arrays
     for elem in hash_table.iter_mut() {
-        *elem = usize::max_value();
+        *elem = 0;
     }
 
     // also store our offset_info
@@ -306,6 +382,21 @@ fn load_json_internal(mut buffer: &mut [u8]) -> InternalResult<usize> {
     offset_info.stroke_index = stroke_prefix_lookup.as_ptr() as usize - new_memory_start;
     offset_info.definitions = definitions.as_ptr() as usize - new_memory_start;
     offset_info.end = (*offset_info).definitions + definitions.len();
+
+    // for reference: the definitions format
+    // definitions contains data for each of the buckets of the
+    // hash table. each bucket can contain one or more items, and the
+    // hash table contains an offset into definitions to where the array
+    // for the given bucket begins. this array contains a number of variable
+    // length entries, each of which has the following format: a 2-byte header
+    // (in little endian), of which the msb indicates whether this is the last
+    // entry (set to 1 if it is). the remaining 15 bits give the (unsigned) offset
+    // to the next entry, in bytes. this is followed by the translation (string),
+    // which is 0-terminated, and the strokes, in 3-byte compact format.
+    // during initialization only, the first two bytes of the array can be set to 0x0000
+    // (which would be a zero-length entry) to mark that no entries have been added yet.
+    // this is safe to do, since zero-length entries are impossible. (the header alone
+    // takes two bytes)
 
     // second pass:
     //   fill up the hash table. then, we'll copy the strings
@@ -318,14 +409,19 @@ fn load_json_internal(mut buffer: &mut [u8]) -> InternalResult<usize> {
 
     while read_pos < buffer_end {
         
-        let definition_start = read_pos;
-        
-        // skip the strokes, we only care about the hash table for now
-        let mut byte = buffer[read_pos];
-        read_pos += 1;
-        while byte != b'"' {
-            byte = buffer[read_pos];
+        // we have to re-compute num_strokes now,
+        // just so we can size all of the arrays properly
+        let mut num_strokes = 1;
+        loop {
+            let byte = buffer[read_pos];
             read_pos += 1;
+
+            if byte == b'"' {
+                break;
+            }
+            else if byte == b'/' {
+                num_strokes += 1;
+            }
         }
 
         // hash the string
@@ -336,9 +432,16 @@ fn load_json_internal(mut buffer: &mut [u8]) -> InternalResult<usize> {
             read_pos += 1;
 
             if byte == 0 {
+
+                let string_length_including_null = read_pos - string_start;
+                let strokes_length = num_strokes * 3;
+                let offset_header_length = 2;
+                let entry_size = offset_header_length + string_length_including_null + strokes_length;
+
                 // (read_pos - 1) since we're ignoring the null byte
                 let string = &buffer[string_start .. (read_pos - 1)];
-                add_to_hash_table(string, definition_start, hash_table, probe_count_array)?;
+                let index = get_hash_table_index(string, hash_table);
+                hash_table[index] += entry_size;
                 break;
             }
         }
@@ -346,9 +449,33 @@ fn load_json_internal(mut buffer: &mut [u8]) -> InternalResult<usize> {
     }
 
     // third pass
-    // now that all strings have been written into the hash table, we know in which order
-    // we'll have to pack them. once we have packed an entry, we can also link to it
-    // from the stroke index, so we'll write that in the same step
+    // now that we know the length of each of the per-bucket entry
+    // arrays, we can compute its offset by doing a prefix sum.
+
+    let mut bucket_array_offset = 0;
+    for entry in hash_table.iter_mut() {
+        let bucket_array_length = *entry;
+
+        if bucket_array_length > 0 {
+            *entry = bucket_array_offset;
+
+            // initialize bucket array with a temporary empty marker
+            // (there won't be any empty bucket arrays in the end, hence
+            //  why it is temporary)
+            definitions[bucket_array_offset] = 0x00;
+            definitions[bucket_array_offset + 1] = 0x00;
+
+            bucket_array_offset += bucket_array_length;
+        }
+        else {
+            *entry = usize::max_value();
+        }
+    }
+
+    // we know now where each entry has to be stored, so we're going
+    // to store them.  once we have packed an entry, we can also link
+    // to it from the stroke index, so we'll write that in the same
+    // step
 
     // determine layout of the stroke index and write it into the stroke prefix lookup table
     // stroke_subindex_lengths contains the length of each subindex. since the subindices
@@ -366,44 +493,80 @@ fn load_json_internal(mut buffer: &mut [u8]) -> InternalResult<usize> {
     let mut stroke_subindex_write_positions = [0; 256];
     
     let last_stroke_marker = 1 << 23;
-    let mut definition_writer = 0;
     
-    for bucket in hash_table.iter_mut() {
-        if *bucket == usize::max_value() {
-            // this bucket is empty
-            continue;
-        }
-        
-        let mut definition_reader = *bucket;
+    read_pos = 0;
+    while read_pos < buffer_end {
 
         // we have to write the string first, so skip the strokes for now
-        let strokes_start = definition_reader;
+        let strokes_start = read_pos;
         loop {
-            let byte = buffer[definition_reader];
-            definition_reader += 1;
+            let byte = buffer[read_pos];
+            read_pos += 1;
             if byte == b'"' {
                 break;
             }
         }
-        let strokes_end = definition_reader;
+        let strokes_end = read_pos;
 
-        let definition_offset = definition_writer;
-        // store the new definition offset in the hashmap
-        *bucket = definition_offset;
-
-        // write the string
+        // read the string
+        let string_start = read_pos;
         loop {
-            let byte = buffer[definition_reader];
-            definition_reader += 1;
+            let byte = buffer[read_pos];
+            read_pos += 1;
 
-            definitions[definition_writer] = byte;
-            definition_writer += 1;
-
-            // check after writing, so that the final null byte is copied
             if byte == 0 {
                 break;
             }
         }
+        let string_end_including_terminator = read_pos;
+
+        let string_without_terminator = &buffer[string_start..(string_end_including_terminator - 1)];
+        let index = get_hash_table_index(string_without_terminator, hash_table);
+
+        let bucket_offset = hash_table[index];
+
+        let bucket_is_empty = definitions[bucket_offset] == 0 && definitions[bucket_offset + 1] == 0;
+
+        let definition_offset = 
+            if bucket_is_empty {
+                bucket_offset
+            }
+            else {
+                // iterate and find the next empty slot
+                let mut pos = bucket_offset;
+                
+                loop {
+                    let mut header = (definitions[pos] as u16) | ((definitions[pos + 1] as u16) << 8);
+                    let is_last = header >> 15 == 1;
+                    let offset = (header & ((1 << 15) - 1)) as usize;
+
+                    if is_last {
+                        // not anymore, since we're appending an entry!
+                        header &= !(1 << 15);
+                        definitions[pos] = (header & 0xFF) as u8;
+                        definitions[pos + 1] = (header >> 8) as u8;
+
+                        // make pos point to the start of the next entry
+                        pos += offset;
+                        break;
+                    }
+                    pos += offset;
+                }
+
+                pos
+            };
+
+        let mut definition_writer = definition_offset;
+        // skip the header for now, we'll come back to that later
+        // (once we know how long this entry is)
+        definition_writer += 2;
+
+        // copy string
+        let string_length_including_terminator = string_end_including_terminator - string_start;
+        definitions[definition_writer .. definition_writer + string_length_including_terminator]
+            .copy_from_slice(&buffer[string_start .. string_end_including_terminator]);
+
+        definition_writer += string_length_including_terminator;
         
         // read strokes
         let mut stroke_reader = strokes_start;
@@ -441,6 +604,18 @@ fn load_json_internal(mut buffer: &mut [u8]) -> InternalResult<usize> {
 
             is_first_stroke = false;
         }
+
+        let definition_length = definition_writer - definition_offset;
+        let is_last_entry = 1 << 15;
+        let length_mask = (1 << 15) - 1;
+
+        if (definition_length & length_mask) != definition_length {
+            return Err(error!(b"I'm sorry, but we can't handle your dictionary.", b"There is nothing wrong with it, except that it has at least one really reaaallly long entry, and this is not something that our internal format can deal with."));
+        }
+
+        let header = (definition_length as u16) | is_last_entry;
+        definitions[definition_offset] = (header & 0xFF) as u8;
+        definitions[definition_offset + 1] = (header >> 8) as u8;
     }
 
     // fourth pass: sort the subindices, so we can binary search
@@ -463,41 +638,12 @@ fn stroke_index_sortkey(entry: &StrokeIndexEntry) -> u16 {
     entry.last_two_bytes
 }
 
-fn add_to_hash_table(string: &[u8], mut value: usize, hash_table: &mut [usize], probe_counts: &mut [u32]) -> InternalResult<()> {
+fn get_hash_table_index(string: &[u8], hash_table: &mut [usize]) -> usize {
 
     let hash = wyhash(string, 1);
-    let mut index = (hash as usize) % hash_table.len();
-    let mut probe_count = 0;
+    let index = (hash as usize) % hash_table.len();
 
-    loop {
-        let bucket = &mut hash_table[index];
-        let stored_probe_count = &mut probe_counts[index];
-        if *bucket == usize::max_value() {
-            *bucket = value;
-            *stored_probe_count = probe_count;
-            break;
-        }
-
-        if *stored_probe_count < probe_count {
-            // swap our value with the one in this cell
-            let displaced_value = *bucket;
-            let displaced_probe_count = *stored_probe_count;
-
-            *bucket = value;
-            *stored_probe_count = probe_count;
-
-            value = displaced_value;
-            probe_count = displaced_probe_count;
-            // now, continue finding a place for the displaced value
-        }
-
-        index += 1;
-        if index == hash_table.len() {
-            index = 0;
-        }
-    }
-
-    return Ok(());
+    return index;
 }
 
 // returns the length of this value in the final entry array, in bytes. (NOT in the rewritten string!)
@@ -867,27 +1013,33 @@ pub unsafe extern fn query(offset: u32, length: u32, data_offset: usize, find_st
 fn query_internal(query: &[u8], hashmap: &[usize], definitions: &[u8]) -> InternalResult<()> {
 
     let hash = wyhash(query, 1);
-    let mut index = (hash as usize) % hashmap.len();
+    let index = (hash as usize) % hashmap.len();
 
-    loop {
-        let entry_offset = hashmap[index];
-        if entry_offset == usize::max_value() {
-            break;
-        }
+    let bucket_offset = hashmap[index];
+    if bucket_offset == usize::max_value() {
+        // no results
+        return Ok(());
+    }
+
+    for definition in BucketEntryIterator::new(&definitions[bucket_offset..]) {
         
-        let string = &definitions[entry_offset..entry_offset + query.len()];
-        let is_match = (definitions[entry_offset + query.len()] == 0) && (string == query);
+        let is_match = (definition.len() > query.len())
+            && (definition[query.len()] == 0)
+            && (&definition[0 .. query.len()] == query);
 
         if is_match {
-            let strokes_start = entry_offset + string.len() + 1;
+
+            let string = &definition[0 .. query.len()];
+
+            let strokes_start = query.len() + 1;
             let mut stroke_pos = strokes_start;
 
             // read strokes
             loop {
 
-                let stroke1 = definitions[stroke_pos] as u32;
-                let stroke2 = definitions[stroke_pos+1] as u32;
-                let stroke3 = definitions[stroke_pos+2] as u32;
+                let stroke1 = definition[stroke_pos] as u32;
+                let stroke2 = definition[stroke_pos+1] as u32;
+                let stroke3 = definition[stroke_pos+2] as u32;
                 stroke_pos += 3;
 
                 let stroke = stroke1 | (stroke2 << 8) | (stroke3 << 16);
@@ -896,19 +1048,11 @@ fn query_internal(query: &[u8], hashmap: &[usize], definitions: &[u8]) -> Intern
                 }
             }
             let strokes_end = stroke_pos;
-            let strokes = &definitions[strokes_start..strokes_end];
+            let strokes = &definition[strokes_start..strokes_end];
 
             unsafe {
                 yield_result(string.as_ptr() as u32, string.len() as u32, strokes.as_ptr() as u32, (strokes_end - strokes_start) as u32);
             }
-        }
-
-        // we'll keep searching even after finding a hit,
-        // since there may be multiple definitions for each translation
-
-        index += 1;
-        if index == hashmap.len() {
-            index = 0;
         }
     }
 
@@ -932,7 +1076,8 @@ fn find_stroke_internal(mut query_stroke: u32, stroke_prefix_lookup: &[usize], s
 
     if let Ok(index) = result {
         let entry = &subindex[index];
-        let definition_offset = entry.definition_offset;
+        // skip the header
+        let definition_offset = entry.definition_offset + 2;
 
         let string_start = definition_offset;
         let string_end = *(&definitions[string_start..].iter().position(|&byte| byte == 0).unwrap()) + string_start;
