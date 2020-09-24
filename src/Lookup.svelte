@@ -51,7 +51,7 @@
     
 </style>
 
-<input type="text" bind:value={query}/>
+<input id="query-input" type="text" aria-labelledby="mode-label" bind:value={query}/>
 {#if query_result !== undefined}
   <ResultsTable results={query_result}/>
 {:else}

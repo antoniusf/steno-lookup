@@ -77,7 +77,7 @@
 
 <StrokeDisplay bind:stroke on:strokeChanged={onStrokeChanged}/>
 
-<input type="text" on:input={onInput} bind:this={input_element} />
+<input type="text" aria-labelledby="mode-label" on:input={onInput} bind:this={input_element} />
 {#if results !== undefined}
   <ResultsTable results={results} />
 {:else}
