@@ -112,21 +112,23 @@
 <div id="container">
   <header>
     <h1 id="mode-label" aria-live="polite">{titles[status]}</h1>
-    <button id="switch" on:click={e => { if (status == "query") { status = "find-stroke" } else { status = "query"} }} disabled={dictionary == null}>
-      {#if (status == "query")}
-        <img src="STK-icon.svg" alt="find stroke"/>
-      {:else}
-        <img src="abc-icon.svg" alt="lookup"/>
-      {/if}
-    </button>
-    <button id="load" class={(status == 'load-dict') ? 'selected' : ''} on:click={toggleLoad} disabled={dictionary == null}>
-      <img src="load-icon.svg" alt="load"/>
-       {#if update_info.new_version
-	&& update_info.user_knows_about_this_version != "unknown"
-	&& update_info.user_knows_about_this_version != update_info.new_version}
-	<div id="notification-marker"></div>
-      {/if}
-    </button>
+    <nav>
+      <button id="switch" on:click={e => { if (status == "query") { status = "find-stroke" } else { status = "query"} }} disabled={dictionary == null}>
+        {#if (status == "query")}
+          <img src="STK-icon.svg" alt="find stroke"/>
+        {:else}
+          <img src="abc-icon.svg" alt="lookup"/>
+        {/if}
+      </button>
+      <button id="load" class={(status == 'load-dict') ? 'selected' : ''} on:click={toggleLoad} disabled={dictionary == null}>
+        <img src="load-icon.svg" alt="load"/>
+         {#if update_info.new_version
+	  && update_info.user_knows_about_this_version != "unknown"
+	  && update_info.user_knows_about_this_version != update_info.new_version}
+	  <div id="notification-marker"></div>
+        {/if}
+      </button>
+    </nav>
   </header>
 
   <main>
@@ -163,16 +165,11 @@
 
     header {
         width: 100%;
+        height: 2em;
         margin: 0;
         margin-bottom: 0.5em;
         padding: 0;
-        /* I know I could use flexbox for this,
-         * but grid just seems easier */
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 2em 2em;
-        grid-template-rows: 2em;
-        grid-template-areas: "mode switch load";
-        grid-column-gap: 0.3em;
+        display: flex;
     }
 
     h1 {
@@ -181,11 +178,22 @@
       margin: auto 0 auto 0.2em;
       padding: 0;
       font-size: 1.5rem;
+      flex-grow: 1;
+      flex-shrink: 1;
+    }
+
+    nav {
+        width: auto;
+        height: auto;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        column-gap: 0.3em;
     }
     
     button {
-      width: 100%;
-      height: 100%;
+      width: 2em;
+      height: 2em;
       background-color: green;
       border: none;
       color: white;
