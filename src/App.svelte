@@ -211,9 +211,9 @@
     }
 
     button:focus {
-      /*outline: 3px dashed black;
-      outline-offset: 2px;*/
-      background-color: #ff50ad;
+        outline: 2px solid black;
+        outline-offset: 1px;
+      /*background-color: #000;*/
     }
 
     button:focus > img {
@@ -229,11 +229,7 @@
     }
 
     button[aria-current=true] {
-        border-bottom: 0.2em solid #ab005a;
-    }
-
-    button[aria-current=true] > div {
-        background-color: #0c0;
+        border-bottom: 0.2em solid #e50078;
     }
 
     button[aria-current=true]:not(:focus) > img {
