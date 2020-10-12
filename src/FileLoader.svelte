@@ -139,7 +139,7 @@ p#smallstatus {
 button {
   margin: 0;
   padding: 0.3em 0.6em;
-  background-color: green;
+  background-color: #ab005a;
   color: white;
   border: none;
   cursor: pointer;

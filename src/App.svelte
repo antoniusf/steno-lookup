@@ -92,19 +92,16 @@
 	}
     }
 
-    async function toggleLoad (event) {
-        if (status == 'load-dict') {
-            status = 'query';
-        }
-        else if (status == 'query' || status == 'find-stroke') {
+    async function showLoadScreen (event) {
+        if (status != "load-dict") {
             status = 'load-dict';
-	    if (update_info.new_version) {
-		if (update_info.user_knows_about_this_version != update_info.new_version) {
-		    // well, they know now
-		    update_info.user_knows_about_this_version = update_info.new_version;
-		    await set("user-knows-about-this-version", update_info.new_version);
-		}
-	    }
+            if (update_info.new_version) {
+                if (update_info.user_knows_about_this_version != update_info.new_version) {
+                    // well, they know now
+                    update_info.user_knows_about_this_version = update_info.new_version;
+                    await set("user-knows-about-this-version", update_info.new_version);
+                }
+            }
         }
     }
 </script>
@@ -113,16 +110,15 @@
   <header>
     <h1 id="mode-label" aria-live="polite">{titles[status]}</h1>
     <nav>
-      <button id="switch" on:click={e => { if (status == "query") { status = "find-stroke" } else { status = "query"} }} disabled={dictionary == null}>
-        {#if (status == "query")}
-          <img src="STK-icon.svg" alt="find stroke"/>
-        {:else}
-          <img src="abc-icon.svg" alt="lookup"/>
-        {/if}
+      <button on:click={e => { status = "query" }} aria-current={status == "query"} disabled={dictionary == null}>
+        <img src="abc-icon.svg" alt="lookup"/>
       </button>
-      <button id="load" class={(status == 'load-dict') ? 'selected' : ''} on:click={toggleLoad} disabled={dictionary == null}>
+      <button on:click={e => { status = "find-stroke" }} aria-current={status == "find-stroke"} disabled={dictionary == null}>
+        <img src="STK-icon.svg" alt="find stroke"/>
+      </button>
+      <button id="load" aria-current={status == "load-dict"} on:click={showLoadScreen} disabled={dictionary == null}>
         <img src="load-icon.svg" alt="load"/>
-         {#if update_info.new_version
+         {#if true || update_info.new_version
 	  && update_info.user_knows_about_this_version != "unknown"
 	  && update_info.user_knows_about_this_version != update_info.new_version}
 	  <div id="notification-marker"></div>
@@ -165,21 +161,24 @@
 
     header {
         width: 100%;
-        height: 2em;
+        height: auto;
         margin: 0;
         margin-bottom: 0.5em;
         padding: 0;
         display: flex;
+        flex-wrap: wrap;
     }
 
     h1 {
       grid-area: mode;
       text-align: left;
-      margin: auto 0 auto 0.2em;
+      margin: 0;
+      margin-left: 0.2em;
       padding: 0;
       font-size: 1.5rem;
       flex-grow: 1;
       flex-shrink: 1;
+      align-self: center;
     }
 
     nav {
@@ -188,48 +187,59 @@
         padding: 0;
         margin: 0;
         display: flex;
-        column-gap: 0.3em;
+        column-gap: 0.2em;
     }
     
     button {
       width: 2em;
-      height: 2em;
-      background-color: green;
       border: none;
-      color: white;
+      color: black;
       cursor: pointer;
       padding: 0;
-    }
-
-    button:focus {
-      background-color: white;
-      border: 0.1em solid black;
-      color: black;
-    }
-
-    button:focus > img {
-      filter: brightness(0.0);
-    }
-
-    button:disabled {
-      background-color: #aaa;
+      margin: 0;
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      background-color: transparent;
     }
 
     button > img {
-      width: 100%;
-      height: 100%;
+        filter: brightness(0.0);
+        object-fit: cover;
+        height: 1.7em;
+        width: 1.9em;
     }
 
-    button.selected:not(:focus) {
-      background-color: black;
+    button:focus {
+      /*outline: 3px dashed black;
+      outline-offset: 2px;*/
+      background-color: #ff50ad;
     }
-    
-    button#switch {
-      grid-area: switch;
+
+    button:focus > img {
+        /*filter: none;*/
+    }
+
+    button:disabled {
+      background-color: transparent;
+    }
+
+    button:disabled > img {
+        filter: brightness(0.5);
+    }
+
+    button[aria-current=true] {
+        border-bottom: 0.2em solid #ab005a;
+    }
+
+    button[aria-current=true] > div {
+        background-color: #0c0;
+    }
+
+    button[aria-current=true]:not(:focus) > img {
     }
     
     button#load {
-      grid-area: load;
       padding: 0; 
       position: relative; /* this is for the marker */
     }
