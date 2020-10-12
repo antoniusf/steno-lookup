@@ -118,7 +118,7 @@
       </button>
       <button id="load" aria-current={status == "load-dict"} on:click={showLoadScreen} disabled={dictionary == null}>
         <img src="load-icon.svg" alt="load"/>
-         {#if true || update_info.new_version
+         {#if update_info.new_version
 	  && update_info.user_knows_about_this_version != "unknown"
 	  && update_info.user_knows_about_this_version != update_info.new_version}
 	  <div id="notification-marker"></div>
@@ -242,15 +242,16 @@
 
     div#notification-marker {
       background-color: #fff;
-      border: 0.2em solid #333;
-      width: 0.7em;
-      height: 0.7em;
+      width: 0.3em;
+      height: 0.3em;
       border-radius: 50%;
+      background-color: #e50078;
+      /*border: 0.15em solid #000;*/
       
       box-sizing: border-box; /* this makes positioning much easier */
       position: absolute;
-      top: -0.25em;
-      left: calc(2em - 0.7em + 0.25em);
+      top: 0.1em;
+      left: calc(2em - 0.5em + 0.05em);
     }
 
     p#nodict {
