@@ -22,7 +22,9 @@ versioned_files = [
     "./helpers.wasm",
     "./load-icon.svg",
     "./abc-icon.svg",
-    "./STK-icon.svg"
+    "./STK-icon.svg",
+    "./expand-icon.svg",
+    "./collapse-icon.svg"
 ]
 
 def packString(buf, string):

@@ -7,6 +7,8 @@
     
     const keys = ["#", "S-", "T-", "K-", "P-", "W-", "H-", "R-", "A", "O", "*", "E", "U", "-F", "-R", "-P", "-B", "-L", "-G", "-T", "-S", "-D", "-Z"];
     const replace_map = {"number": "#", "star": "*"};
+
+    let show_keyboard = true;
     
     let state = {};
     for (const key of keys) {
@@ -131,6 +133,35 @@
 </script>
 
 <style>
+    button.keyboard-toggle {
+      margin: 0;
+      padding: 0.2em 0.4em 0.2em 0.2em;
+      background-color: #ab005a;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-size: 0.9rem;
+      margin: 0 auto;
+      margin-bottom: 1em;
+      display: flex;
+      align-items: center;
+    }
+
+    button.keyboard-toggle:focus {
+        outline: 2px solid black;
+        outline-offset: 2px;
+    }
+
+    button.keyboard-toggle > img {
+        vertical-align: middle;
+        height: 1.1em;
+        margin-right: 0.1em;
+    }
+
+    button.keyboard-toggle > span {
+        vertical-align: middle;
+    }
+
   div#steno-keyboard {
     display: grid;
     grid-template-columns: repeat(10, 1fr);
@@ -146,8 +177,12 @@
     width: calc(100% - 1.6em);
     margin: 1em 0.8em 10%;
   }
+
+  div#steno-keyboard[hidden] {
+      display: none;
+  }
   
-  button {
+  button.steno {
     width: 100%;
     padding: 0;
     margin: 0;
@@ -298,6 +333,15 @@
   }
 </style>
 
+<button
+     class="keyboard-toggle"
+     aria-expanded={show_keyboard}
+     on:click={(event) => {show_keyboard = !show_keyboard;} }>
+
+     <img src={show_keyboard? "collapse-icon.svg" : "expand-icon.svg"} alt=""/>
+     <span>{show_keyboard? "hide steno keyboard" : "show steno keyboard"}</span>
+</button>
+
 <!-- I don't think the graphical stroke display is useful for users of
      assistive technology, especially since its functionality is replicated
      one-to-one in the stroke text input field. On the contrary, I think that
@@ -305,14 +349,14 @@
      decided to just remove it from the accessibility tree for now.
  -->
 
-<div id="steno-keyboard" aria-hidden="true">
+ <div id="steno-keyboard" aria-hidden=true hidden={!show_keyboard}>
     <button id="number"
         on:click={handle_click}
         on:touchstart|preventDefault={touch_start}
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["#"]}
+        class:active={state["#"]} class="steno"
         tabindex="-1">
     </button>
 
@@ -322,7 +366,7 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["S-"]} class="long-key"
+        class:active={state["S-"]} class="steno long-key"
         tabindex="-1">
     </button>
 
@@ -332,7 +376,7 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["T-"]} class="top-row"
+        class:active={state["T-"]} class="steno top-row"
         tabindex="-1">
     </button>
 
@@ -342,7 +386,7 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["K-"]} class="bottom-row"
+        class:active={state["K-"]} class="steno bottom-row"
         tabindex="-1">
     </button>
 
@@ -352,7 +396,7 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["P-"]} class="top-row"
+        class:active={state["P-"]} class="steno top-row"
         tabindex="-1">
     </button>
 
@@ -362,7 +406,7 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["W-"]} class="bottom-row"
+        class:active={state["W-"]} class="steno bottom-row"
         tabindex="-1">
     </button>
 
@@ -372,7 +416,7 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["H-"]} class="top-row"
+        class:active={state["H-"]} class="steno top-row"
         tabindex="-1">
     </button>
 
@@ -382,7 +426,7 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["R-"]} class="bottom-row"
+        class:active={state["R-"]} class="steno bottom-row"
         tabindex="-1">
     </button>
 
@@ -396,7 +440,7 @@
             on:touchmove={touch_move}
             on:touchend={touch_end}
             on:touchcancel={touch_end}
-            class:active={state["A"]} class="left-vowel"
+            class:active={state["A"]} class="steno left-vowel"
         tabindex="-1">
         </button>
     </div>
@@ -408,7 +452,7 @@
             on:touchmove={touch_move}
             on:touchend={touch_end}
             on:touchcancel={touch_end}
-            class:active={state["O"]} class="left-vowel"
+            class:active={state["O"]} class="steno left-vowel"
         tabindex="-1">
         </button>
     </div>
@@ -419,7 +463,7 @@
 	on:touchmove={touch_move}
 	on:touchend={touch_end}
 	on:touchcancel={touch_end}
-	class:active={state["*"]} class="long-key"
+	class:active={state["*"]} class="steno long-key"
         tabindex="-1">
     </button>
 
@@ -430,7 +474,7 @@
             on:touchmove={touch_move}
             on:touchend={touch_end}
             on:touchcancel={touch_end}
-            class:active={state["E"]} class="right-vowel"
+            class:active={state["E"]} class="steno right-vowel"
         tabindex="-1">
         </button>
     </div>
@@ -442,7 +486,7 @@
           on:touchmove={touch_move}
           on:touchend={touch_end}
           on:touchcancel={touch_end}
-          class:active={state["U"]} class="right-vowel"
+          class:active={state["U"]} class="steno right-vowel"
         tabindex="-1">
       </button>
     </div>
@@ -453,7 +497,7 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-F"]} class="top-row"
+        class:active={state["-F"]} class="steno top-row"
         tabindex="-1">
     </button>
 
@@ -463,7 +507,7 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-R"]} class="bottom-row"
+        class:active={state["-R"]} class="steno bottom-row"
         tabindex="-1">
     </button>
 
@@ -473,7 +517,7 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-P"]} class="top-row"
+        class:active={state["-P"]} class="steno top-row"
         tabindex="-1">
     </button>
 
@@ -483,7 +527,7 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-B"]} class="bottom-row"
+        class:active={state["-B"]} class="steno bottom-row"
         tabindex="-1">
     </button>
 
@@ -493,7 +537,7 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-L"]} class="top-row"
+        class:active={state["-L"]} class="steno top-row"
         tabindex="-1">
     </button>
 
@@ -503,7 +547,7 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-G"]} class="bottom-row"
+        class:active={state["-G"]} class="steno bottom-row"
         tabindex="-1">
     </button>
 
@@ -513,7 +557,7 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-T"]} class="top-row"
+        class:active={state["-T"]} class="steno top-row"
         tabindex="-1">
     </button>
 
@@ -523,7 +567,7 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-S"]} class="bottom-row"
+        class:active={state["-S"]} class="steno bottom-row"
         tabindex="-1">
     </button>
 
@@ -533,7 +577,7 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-D"]} class="top-row"
+        class:active={state["-D"]} class="steno top-row"
         tabindex="-1">
     </button>
 
@@ -543,7 +587,7 @@
         on:touchmove={touch_move}
         on:touchend={touch_end}
         on:touchcancel={touch_end}
-        class:active={state["-Z"]} class="bottom-row"
+        class:active={state["-Z"]} class="steno bottom-row"
         tabindex="-1">
     </button>
 </div>
