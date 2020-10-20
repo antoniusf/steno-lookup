@@ -32,6 +32,7 @@
 
     // touch handling
     let active_touches = {};
+    let last_touch = null;
 
     function touch_start(event) {
 
@@ -121,9 +122,32 @@
 	for (let i = 0; i < touches.length; i++) {
 	    delete active_touches[touches[i].identifier];
 	}
+        last_touch = {
+            x: touches[touches.length - 1].clientX,
+            y: touches[touches.length - 1].clientY,
+            target: touches[touches.length - 1].target
+        };
+        console.log(last_touch);
     }
 
     function handle_click(event) {
+
+        // avoid double-counting the events. this is necessary since
+        // preventDefault appears to be ignored by talkback/firefox for android.
+        console.log(`x: ${event.clientX}, y: ${event.clientY}`);
+        if (last_touch !== null) {
+            if ((event.target == last_touch.target)
+                && (last_touch.x == event.clientX)
+                && (last_touch.y == event.clientY)) {
+
+                // we should already have handled this event
+                // in the touch handler. ignore.
+                last_touch = null;
+                return;
+            }
+
+            last_touch = null;
+        }
 	// toggle the button's state
 	const button = replace_map[event.target.id] || event.target.id;
 	state[button] ^= true;
@@ -199,7 +223,7 @@
     padding-bottom: 4%;
   }
 
-  button.active {
+  button[aria-pressed="true"] {
     background-color: #000;
   }
   
@@ -349,245 +373,268 @@
      decided to just remove it from the accessibility tree for now.
  -->
 
- <div id="steno-keyboard" aria-hidden=true hidden={!show_keyboard}>
-    <button id="number"
-        on:click={handle_click}
-        on:touchstart|preventDefault={touch_start}
-        on:touchmove={touch_move}
-        on:touchend={touch_end}
-        on:touchcancel={touch_end}
-        class:active={state["#"]} class="steno"
-        tabindex="-1">
-    </button>
+ <div id="steno-keyboard" hidden={!show_keyboard} role="group" aria-label="steno keyboard">
+     <button id="number"
+             aria-label="number bar"
+             aria-pressed={!!state["#"]}
+             on:click={handle_click}
+             on:touchstart|preventDefault={touch_start}
+             on:touchmove={touch_move}
+             on:touchend={touch_end}
+             on:touchcancel={touch_end}
+             class="steno">
+     </button>
 
-    <button id="S-"
-        on:click={handle_click}
-        on:touchstart|preventDefault={touch_start}
-        on:touchmove={touch_move}
-        on:touchend={touch_end}
-        on:touchcancel={touch_end}
-        class:active={state["S-"]} class="steno long-key"
-        tabindex="-1">
-    </button>
+     <button id="S-"
+             aria-label="left S"
+             aria-pressed={!!state["S-"]}
+             on:click={handle_click}
+             on:touchstart|preventDefault={touch_start}
+             on:touchmove={touch_move}
+             on:touchend={touch_end}
+             on:touchcancel={touch_end}
+             class="steno long-key">
+     </button>
 
-    <button id="T-"
-        on:click={handle_click}
-        on:touchstart|preventDefault={touch_start}
-        on:touchmove={touch_move}
-        on:touchend={touch_end}
-        on:touchcancel={touch_end}
-        class:active={state["T-"]} class="steno top-row"
-        tabindex="-1">
-    </button>
+     <button id="T-"
+             aria-label="left T"
+             aria-pressed={!!state["T-"]}
+             on:click={handle_click}
+             on:touchstart|preventDefault={touch_start}
+             on:touchmove={touch_move}
+             on:touchend={touch_end}
+             on:touchcancel={touch_end}
+             class="steno top-row">
+     </button>
 
-    <button id="K-"
-        on:click={handle_click}
-        on:touchstart|preventDefault={touch_start}
-        on:touchmove={touch_move}
-        on:touchend={touch_end}
-        on:touchcancel={touch_end}
-        class:active={state["K-"]} class="steno bottom-row"
-        tabindex="-1">
-    </button>
+     <button id="K-"
+             aria-label="left K"
+             aria-pressed={!!state["K-"]}
+             on:click={handle_click}
+             on:touchstart|preventDefault={touch_start}
+             on:touchmove={touch_move}
+             on:touchend={touch_end}
+             on:touchcancel={touch_end}
+             class="steno bottom-row">
+     </button>
 
-    <button id="P-"
-        on:click={handle_click}
-        on:touchstart|preventDefault={touch_start}
-        on:touchmove={touch_move}
-        on:touchend={touch_end}
-        on:touchcancel={touch_end}
-        class:active={state["P-"]} class="steno top-row"
-        tabindex="-1">
-    </button>
+     <button id="P-"
+             aria-label="left P"
+             aria-pressed={!!state["P-"]}
+             on:click={handle_click}
+             on:touchstart|preventDefault={touch_start}
+             on:touchmove={touch_move}
+             on:touchend={touch_end}
+             on:touchcancel={touch_end}
+             class="steno top-row">
+     </button>
 
-    <button id="W-"
-        on:click={handle_click}
-        on:touchstart|preventDefault={touch_start}
-        on:touchmove={touch_move}
-        on:touchend={touch_end}
-        on:touchcancel={touch_end}
-        class:active={state["W-"]} class="steno bottom-row"
-        tabindex="-1">
-    </button>
+     <button id="W-"
+             aria-label="left W"
+             aria-pressed={!!state["W-"]}
+             on:click={handle_click}
+             on:touchstart|preventDefault={touch_start}
+             on:touchmove={touch_move}
+             on:touchend={touch_end}
+             on:touchcancel={touch_end}
+             class="steno bottom-row">
+     </button>
 
-    <button id="H-"
-        on:click={handle_click}
-        on:touchstart|preventDefault={touch_start}
-        on:touchmove={touch_move}
-        on:touchend={touch_end}
-        on:touchcancel={touch_end}
-        class:active={state["H-"]} class="steno top-row"
-        tabindex="-1">
-    </button>
+     <button id="H-"
+             aria-label="left H"
+             aria-pressed={!!state["H-"]}
+             on:click={handle_click}
+             on:touchstart|preventDefault={touch_start}
+             on:touchmove={touch_move}
+             on:touchend={touch_end}
+             on:touchcancel={touch_end}
+             class="steno top-row">
+     </button>
 
-    <button id="R-"
-        on:click={handle_click}
-        on:touchstart|preventDefault={touch_start}
-        on:touchmove={touch_move}
-        on:touchend={touch_end}
-        on:touchcancel={touch_end}
-        class:active={state["R-"]} class="steno bottom-row"
-        tabindex="-1">
-    </button>
+     <button id="R-"
+             aria-label="left R"
+             aria-pressed={!!state["R-"]}
+             on:click={handle_click}
+             on:touchstart|preventDefault={touch_start}
+             on:touchmove={touch_move}
+             on:touchend={touch_end}
+             on:touchcancel={touch_end}
+             class="steno bottom-row">
+     </button>
 
-    <div id="A-" class="vowel-container">
-        <!--note: the button ids don't have the dash, to distinguish them from the div ids!
-                (and also to make interfacing with the stroke library easier, where the vowels
-                 don't have dashes either)-->
-        <button id="A"
-            on:click={handle_click}
-            on:touchstart|preventDefault={touch_start}
-            on:touchmove={touch_move}
-            on:touchend={touch_end}
-            on:touchcancel={touch_end}
-            class:active={state["A"]} class="steno left-vowel"
-        tabindex="-1">
-        </button>
-    </div>
+     <div id="A-" class="vowel-container">
+         <!--note: the button ids don't have the dash, to distinguish them from the div ids!
+             (and also to make interfacing with the stroke library easier, where the vowels
+             don't have dashes either)-->
+             <button id="A"
+                     aria-label="A"
+                     aria-pressed={!!state["A"]}
+                     on:click={handle_click}
+                     on:touchstart|preventDefault={touch_start}
+                     on:touchmove={touch_move}
+                     on:touchend={touch_end}
+                     on:touchcancel={touch_end}
+                     class="steno left-vowel">
+             </button>
+     </div>
 
-    <div id="O-" class="vowel-container">
-        <button id="O"
-            on:click={handle_click}
-            on:touchstart|preventDefault={touch_start}
-            on:touchmove={touch_move}
-            on:touchend={touch_end}
-            on:touchcancel={touch_end}
-            class:active={state["O"]} class="steno left-vowel"
-        tabindex="-1">
-        </button>
-    </div>
+     <div id="O-" class="vowel-container">
+         <button id="O"
+                 aria-label="O"
+                 aria-pressed={!!state["O"]}
+                 on:click={handle_click}
+                 on:touchstart|preventDefault={touch_start}
+                 on:touchmove={touch_move}
+                 on:touchend={touch_end}
+                 on:touchcancel={touch_end}
+                 class="steno left-vowel">
+         </button>
+     </div>
 
-    <button id="star"
-	on:click={handle_click}
-	on:touchstart|preventDefault={touch_start}
-	on:touchmove={touch_move}
-	on:touchend={touch_end}
-	on:touchcancel={touch_end}
-	class:active={state["*"]} class="steno long-key"
-        tabindex="-1">
-    </button>
+     <button id="star"
+             aria-label="asterisk"
+             aria-pressed={!!state["*"]}
+             on:click={handle_click}
+             on:touchstart|preventDefault={touch_start}
+             on:touchmove={touch_move}
+             on:touchend={touch_end}
+             on:touchcancel={touch_end}
+             class="steno long-key">
+     </button>
 
-    <div id="-E" class="vowel-container">
-        <button id="E"
-            on:click={handle_click}
-            on:touchstart|preventDefault={touch_start}
-            on:touchmove={touch_move}
-            on:touchend={touch_end}
-            on:touchcancel={touch_end}
-            class:active={state["E"]} class="steno right-vowel"
-        tabindex="-1">
-        </button>
-    </div>
+     <div id="-E" class="vowel-container">
+         <button id="E"
+                 aria-label="E"
+                 aria-pressed={!!state["E"]}
+                 on:click={handle_click}
+                 on:touchstart|preventDefault={touch_start}
+                 on:touchmove={touch_move}
+                 on:touchend={touch_end}
+                 on:touchcancel={touch_end}
+                 class="steno right-vowel">
+         </button>
+     </div>
 
-    <div id="-U" class="vowel-container">
-        <button id="U"
-          on:click={handle_click}
-          on:touchstart|preventDefault={touch_start}
-          on:touchmove={touch_move}
-          on:touchend={touch_end}
-          on:touchcancel={touch_end}
-          class:active={state["U"]} class="steno right-vowel"
-        tabindex="-1">
-      </button>
-    </div>
+     <div id="-U" class="vowel-container">
+         <button id="U"
+                 aria-label="U"
+                 aria-pressed={!!state["U"]}
+                 on:click={handle_click}
+                 on:touchstart|preventDefault={touch_start}
+                 on:touchmove={touch_move}
+                 on:touchend={touch_end}
+                 on:touchcancel={touch_end}
+                 class="steno right-vowel">
+         </button>
+     </div>
 
-    <button id="-F"
-        on:click={handle_click}
-        on:touchstart|preventDefault={touch_start}
-        on:touchmove={touch_move}
-        on:touchend={touch_end}
-        on:touchcancel={touch_end}
-        class:active={state["-F"]} class="steno top-row"
-        tabindex="-1">
-    </button>
+     <button id="-F"
+             aria-label="right F"
+             aria-pressed={!!state["-F"]}
+             on:click={handle_click}
+             on:touchstart|preventDefault={touch_start}
+             on:touchmove={touch_move}
+             on:touchend={touch_end}
+             on:touchcancel={touch_end}
+             class="steno top-row">
+     </button>
 
-    <button id="-R"
-        on:click={handle_click}
-        on:touchstart|preventDefault={touch_start}
-        on:touchmove={touch_move}
-        on:touchend={touch_end}
-        on:touchcancel={touch_end}
-        class:active={state["-R"]} class="steno bottom-row"
-        tabindex="-1">
-    </button>
+     <button id="-R"
+             aria-label="right R"
+             aria-pressed={!!state["-R"]}
+             on:click={handle_click}
+             on:touchstart|preventDefault={touch_start}
+             on:touchmove={touch_move}
+             on:touchend={touch_end}
+             on:touchcancel={touch_end}
+             class="steno bottom-row">
+     </button>
 
-    <button id="-P"
-        on:click={handle_click}
-        on:touchstart|preventDefault={touch_start}
-        on:touchmove={touch_move}
-        on:touchend={touch_end}
-        on:touchcancel={touch_end}
-        class:active={state["-P"]} class="steno top-row"
-        tabindex="-1">
-    </button>
+     <button id="-P"
+             aria-label="right P"
+             aria-pressed={!!state["-P"]}
+             on:click={handle_click}
+             on:touchstart|preventDefault={touch_start}
+             on:touchmove={touch_move}
+             on:touchend={touch_end}
+             on:touchcancel={touch_end}
+             class="steno top-row">
+     </button>
 
-    <button id="-B"
-        on:click={handle_click}
-        on:touchstart|preventDefault={touch_start}
-        on:touchmove={touch_move}
-        on:touchend={touch_end}
-        on:touchcancel={touch_end}
-        class:active={state["-B"]} class="steno bottom-row"
-        tabindex="-1">
-    </button>
+     <button id="-B"
+             aria-label="right B"
+             aria-pressed={!!state["-B"]}
+             on:click={handle_click}
+             on:touchstart|preventDefault={touch_start}
+             on:touchmove={touch_move}
+             on:touchend={touch_end}
+             on:touchcancel={touch_end}
+             class="steno bottom-row">
+     </button>
 
-    <button id="-L"
-        on:click={handle_click}
-        on:touchstart|preventDefault={touch_start}
-        on:touchmove={touch_move}
-        on:touchend={touch_end}
-        on:touchcancel={touch_end}
-        class:active={state["-L"]} class="steno top-row"
-        tabindex="-1">
-    </button>
+     <button id="-L"
+             aria-label="right L"
+             aria-pressed={!!state["-L"]}
+             on:click={handle_click}
+             on:touchstart|preventDefault={touch_start}
+             on:touchmove={touch_move}
+             on:touchend={touch_end}
+             on:touchcancel={touch_end}
+             class="steno top-row">
+     </button>
 
-    <button id="-G"
-        on:click={handle_click}
-        on:touchstart|preventDefault={touch_start}
-        on:touchmove={touch_move}
-        on:touchend={touch_end}
-        on:touchcancel={touch_end}
-        class:active={state["-G"]} class="steno bottom-row"
-        tabindex="-1">
-    </button>
+     <button id="-G"
+             aria-label="right G"
+             aria-pressed={!!state["-G"]}
+             on:click={handle_click}
+             on:touchstart|preventDefault={touch_start}
+             on:touchmove={touch_move}
+             on:touchend={touch_end}
+             on:touchcancel={touch_end}
+             class="steno bottom-row">
+     </button>
 
-    <button id="-T"
-        on:click={handle_click}
-        on:touchstart|preventDefault={touch_start}
-        on:touchmove={touch_move}
-        on:touchend={touch_end}
-        on:touchcancel={touch_end}
-        class:active={state["-T"]} class="steno top-row"
-        tabindex="-1">
-    </button>
+     <button id="-T"
+             aria-label="right T"
+             aria-pressed={!!state["-T"]}
+             on:click={handle_click}
+             on:touchstart|preventDefault={touch_start}
+             on:touchmove={touch_move}
+             on:touchend={touch_end}
+             on:touchcancel={touch_end}
+             class="steno top-row">
+     </button>
 
-    <button id="-S"
-        on:click={handle_click}
-        on:touchstart|preventDefault={touch_start}
-        on:touchmove={touch_move}
-        on:touchend={touch_end}
-        on:touchcancel={touch_end}
-        class:active={state["-S"]} class="steno bottom-row"
-        tabindex="-1">
-    </button>
+     <button id="-S"
+             aria-label="right S"
+             aria-pressed={!!state["-S"]}
+             on:click={handle_click}
+             on:touchstart|preventDefault={touch_start}
+             on:touchmove={touch_move}
+             on:touchend={touch_end}
+             on:touchcancel={touch_end}
+             class="steno bottom-row">
+     </button>
 
-    <button id="-D"
-        on:click={handle_click}
-        on:touchstart|preventDefault={touch_start}
-        on:touchmove={touch_move}
-        on:touchend={touch_end}
-        on:touchcancel={touch_end}
-        class:active={state["-D"]} class="steno top-row"
-        tabindex="-1">
-    </button>
+     <button id="-D"
+             aria-label="right D"
+             aria-pressed={!!state["-D"]}
+             on:click={handle_click}
+             on:touchstart|preventDefault={touch_start}
+             on:touchmove={touch_move}
+             on:touchend={touch_end}
+             on:touchcancel={touch_end}
+             class="steno top-row">
+     </button>
 
-    <button id="-Z"
-        on:click={handle_click}
-        on:touchstart|preventDefault={touch_start}
-        on:touchmove={touch_move}
-        on:touchend={touch_end}
-        on:touchcancel={touch_end}
-        class:active={state["-Z"]} class="steno bottom-row"
-        tabindex="-1">
-    </button>
-</div>
+     <button id="-Z"
+             aria-label="right Z"
+             aria-pressed={!!state["-Z"]}
+             on:click={handle_click}
+             on:touchstart|preventDefault={touch_start}
+             on:touchmove={touch_move}
+             on:touchend={touch_end}
+             on:touchcancel={touch_end}
+             class="steno bottom-row">
+     </button>
+ </div>
