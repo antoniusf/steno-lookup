@@ -154,6 +154,53 @@
 
 	stroke_changed();
     }
+
+    let steno_keyboard_focus = "#";
+    let steno_keyboard_keys = {};
+
+    function steno_key_keydown(event) {
+        switch (event.key) {
+            case "Down":
+            case "ArrowDown":
+                if (steno_keyboard_focus == "#") {
+                    steno_keyboard_keys["S-"].focus();
+                }
+                else if (steno_keyboard_focus == "T-") {
+                    steno_keyboard_keys["K-"].focus();
+                }
+                break;
+
+            case "Up":
+            case "ArrowUp":
+                if (steno_keyboard_focus == "K-") {
+                    steno_keyboard_keys["T-"].focus();
+                }
+                else if (steno_keyboard_focus == "S-" || steno_keyboard_focus == "T-") {
+                    steno_keyboard_keys["#"].focus();
+                }
+                break;
+
+            case "Left":
+            case "ArrowLeft":
+                if (steno_keyboard_focus == "K-" || steno_keyboard_focus == "T-") {
+                    steno_keyboard_keys["S-"].focus();
+                }
+                break;
+
+            case "Right":
+            case "ArrowRight":
+                if (steno_keyboard_focus == "S-") {
+                    steno_keyboard_keys["T-"].focus();
+                }
+                break;
+        }
+    }
+
+    function steno_key_focus(event) {
+        let button_name = replace_map[event.target.id] || event.target.id;
+        steno_keyboard_focus = button_name;
+        console.log(`changed focus to ${steno_keyboard_focus}`);
+    }
 </script>
 
 <style>
@@ -171,7 +218,7 @@
       align-items: center;
     }
 
-    button.keyboard-toggle:focus {
+    button/*.keyboard-toggle*/:focus {
         outline: 2px solid black;
         outline-offset: 2px;
     }
@@ -373,6 +420,7 @@
      decided to just remove it from the accessibility tree for now.
  -->
 
+ <!-- TODO: this should prob be an actual table-->
  <div id="steno-keyboard" hidden={!show_keyboard} role="group" aria-label="steno keyboard">
      <button id="number"
              aria-label="number bar"
@@ -382,6 +430,10 @@
              on:touchmove={touch_move}
              on:touchend={touch_end}
              on:touchcancel={touch_end}
+             on:keydown={steno_key_keydown}
+             on:focus={steno_key_focus}
+             tabindex={(steno_keyboard_focus == "#")? 0 : -1}
+             bind:this={steno_keyboard_keys["#"]}
              class="steno">
      </button>
 
@@ -393,6 +445,10 @@
              on:touchmove={touch_move}
              on:touchend={touch_end}
              on:touchcancel={touch_end}
+             on:keydown={steno_key_keydown}
+             on:focus={steno_key_focus}
+             tabindex={(steno_keyboard_focus == "S-")? 0 : -1}
+             bind:this={steno_keyboard_keys["S-"]}
              class="steno long-key">
      </button>
 
@@ -404,6 +460,10 @@
              on:touchmove={touch_move}
              on:touchend={touch_end}
              on:touchcancel={touch_end}
+             on:keydown={steno_key_keydown}
+             on:focus={steno_key_focus}
+             tabindex={(steno_keyboard_focus == "T-")? 0 : -1}
+             bind:this={steno_keyboard_keys["T-"]}
              class="steno top-row">
      </button>
 
@@ -415,6 +475,10 @@
              on:touchmove={touch_move}
              on:touchend={touch_end}
              on:touchcancel={touch_end}
+             on:keydown={steno_key_keydown}
+             on:focus={steno_key_focus}
+             tabindex={(steno_keyboard_focus == "K-")? 0 : -1}
+             bind:this={steno_keyboard_keys["K-"]}
              class="steno bottom-row">
      </button>
 
