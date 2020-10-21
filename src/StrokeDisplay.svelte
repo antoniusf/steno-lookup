@@ -7,6 +7,64 @@
     
     const keys = ["#", "S-", "T-", "K-", "P-", "W-", "H-", "R-", "A", "O", "*", "E", "U", "-F", "-R", "-P", "-B", "-L", "-G", "-T", "-S", "-D", "-Z"];
     const replace_map = {"number": "#", "star": "*"};
+    const reverse_replace_map = {"#": "number", "*": "star"};
+
+    const steno_keyboard_layout = [
+        ["#",  "#",  "#",  "#",  "#", "#",  "#",  "#",  "#",  "#"],
+        ["S-", "T-", "P-", "H-", "*", "-F", "-P", "-L", "-T", "-D"],
+        ["S-", "K-", "W-", "R-", "*", "-R", "-B", "-G", "-S", "-Z"],
+        [null, null, "A",  "O", null, "E",  "U",  null, null, null]
+    ];
+
+    let key_indices = {};
+    for (let rowindex = 0; rowindex < steno_keyboard_layout.length; rowindex++) {
+        let row = steno_keyboard_layout[rowindex];
+        for (let colindex = 0; colindex < row.length; colindex++) {
+            let key_name = row[colindex];
+
+            // avoid null keys, and only use the first occurence
+            if (key_name && !key_indices[key_name]) {
+                key_indices[key_name] = [rowindex, colindex];
+            }
+        }
+    }
+
+    function try_move_focus(delta) {
+
+        let new_position = [
+            steno_keyboard_position[0] + delta[0],
+            steno_keyboard_position[1] + delta[1]
+        ];
+
+        if (new_position[0] >= 0 && new_position[0] < steno_keyboard_layout.length) {
+
+            let current_key_name = steno_keyboard_layout[steno_keyboard_position[0]][steno_keyboard_position[1]];
+            let key_name = steno_keyboard_layout[new_position[0]][new_position[1]];
+
+            if (!key_name || key_name == current_key_name) {
+                // try to move another square
+                // this is for skipping the gap between the vowels,
+                // as well as for the long keys
+                console.log("double move");
+                new_position = [
+                    new_position[0] + delta[0],
+                    new_position[1] + delta[1]
+                ];
+
+                if (new_position[0] >= 0 && new_position[0] < steno_keyboard_layout.length) {
+                    key_name = steno_keyboard_layout[new_position[0]][new_position[1]];
+                }
+            }
+            if (key_name && key_name != current_key_name) {
+                steno_keyboard_buttons[key_name].focus();
+                steno_keyboard_position = new_position;
+                console.log(steno_keyboard_position);
+            }
+        }
+    }
+
+    const steno_keyboard_buttons = {};
+    let steno_keyboard_position = [0, 0];
 
     let show_keyboard = true;
     
@@ -155,51 +213,34 @@
 	stroke_changed();
     }
 
-    let steno_keyboard_focus = "#";
-    let steno_keyboard_keys = {};
-
     function steno_key_keydown(event) {
         switch (event.key) {
             case "Down":
             case "ArrowDown":
-                if (steno_keyboard_focus == "#") {
-                    steno_keyboard_keys["S-"].focus();
-                }
-                else if (steno_keyboard_focus == "T-") {
-                    steno_keyboard_keys["K-"].focus();
-                }
+                try_move_focus([1, 0]);
                 break;
 
             case "Up":
             case "ArrowUp":
-                if (steno_keyboard_focus == "K-") {
-                    steno_keyboard_keys["T-"].focus();
-                }
-                else if (steno_keyboard_focus == "S-" || steno_keyboard_focus == "T-") {
-                    steno_keyboard_keys["#"].focus();
-                }
+                try_move_focus([-1, 0]);
                 break;
 
             case "Left":
             case "ArrowLeft":
-                if (steno_keyboard_focus == "K-" || steno_keyboard_focus == "T-") {
-                    steno_keyboard_keys["S-"].focus();
-                }
+                try_move_focus([0, -1]);
                 break;
 
             case "Right":
             case "ArrowRight":
-                if (steno_keyboard_focus == "S-") {
-                    steno_keyboard_keys["T-"].focus();
-                }
+                try_move_focus([0, 1]);
                 break;
         }
     }
 
     function steno_key_focus(event) {
         let button_name = replace_map[event.target.id] || event.target.id;
-        steno_keyboard_focus = button_name;
-        console.log(`changed focus to ${steno_keyboard_focus}`);
+        steno_keyboard_position = key_indices[button_name];
+        console.log(`changed focus to ${steno_keyboard_position}`);
     }
 </script>
 
@@ -343,11 +384,11 @@
     grid-area: R-;
   }
 
-  div#A- {
+  div#A-, button#A {
     grid-area: A-;
   }
 
-  div#O- {
+  div#O-, button#O {
     grid-area: O-;
   }
 
@@ -355,11 +396,11 @@
     grid-area: star;
   }
 
-  div#-E {
+  div#-E, button#E {
     grid-area: -E;
   }
 
-  div#-U {
+  div#-U, button#U {
     grid-area: -U;
   }
 
@@ -422,283 +463,26 @@
 
  <!-- TODO: this should prob be an actual table-->
  <div id="steno-keyboard" hidden={!show_keyboard} role="group" aria-label="steno keyboard">
-     <button id="number"
-             aria-label="number bar"
-             aria-pressed={!!state["#"]}
-             on:click={handle_click}
-             on:touchstart|preventDefault={touch_start}
-             on:touchmove={touch_move}
-             on:touchend={touch_end}
-             on:touchcancel={touch_end}
-             on:keydown={steno_key_keydown}
-             on:focus={steno_key_focus}
-             tabindex={(steno_keyboard_focus == "#")? 0 : -1}
-             bind:this={steno_keyboard_keys["#"]}
-             class="steno">
-     </button>
-
-     <button id="S-"
-             aria-label="left S"
-             aria-pressed={!!state["S-"]}
-             on:click={handle_click}
-             on:touchstart|preventDefault={touch_start}
-             on:touchmove={touch_move}
-             on:touchend={touch_end}
-             on:touchcancel={touch_end}
-             on:keydown={steno_key_keydown}
-             on:focus={steno_key_focus}
-             tabindex={(steno_keyboard_focus == "S-")? 0 : -1}
-             bind:this={steno_keyboard_keys["S-"]}
-             class="steno long-key">
-     </button>
-
-     <button id="T-"
-             aria-label="left T"
-             aria-pressed={!!state["T-"]}
-             on:click={handle_click}
-             on:touchstart|preventDefault={touch_start}
-             on:touchmove={touch_move}
-             on:touchend={touch_end}
-             on:touchcancel={touch_end}
-             on:keydown={steno_key_keydown}
-             on:focus={steno_key_focus}
-             tabindex={(steno_keyboard_focus == "T-")? 0 : -1}
-             bind:this={steno_keyboard_keys["T-"]}
-             class="steno top-row">
-     </button>
-
-     <button id="K-"
-             aria-label="left K"
-             aria-pressed={!!state["K-"]}
-             on:click={handle_click}
-             on:touchstart|preventDefault={touch_start}
-             on:touchmove={touch_move}
-             on:touchend={touch_end}
-             on:touchcancel={touch_end}
-             on:keydown={steno_key_keydown}
-             on:focus={steno_key_focus}
-             tabindex={(steno_keyboard_focus == "K-")? 0 : -1}
-             bind:this={steno_keyboard_keys["K-"]}
-             class="steno bottom-row">
-     </button>
-
-     <button id="P-"
-             aria-label="left P"
-             aria-pressed={!!state["P-"]}
-             on:click={handle_click}
-             on:touchstart|preventDefault={touch_start}
-             on:touchmove={touch_move}
-             on:touchend={touch_end}
-             on:touchcancel={touch_end}
-             class="steno top-row">
-     </button>
-
-     <button id="W-"
-             aria-label="left W"
-             aria-pressed={!!state["W-"]}
-             on:click={handle_click}
-             on:touchstart|preventDefault={touch_start}
-             on:touchmove={touch_move}
-             on:touchend={touch_end}
-             on:touchcancel={touch_end}
-             class="steno bottom-row">
-     </button>
-
-     <button id="H-"
-             aria-label="left H"
-             aria-pressed={!!state["H-"]}
-             on:click={handle_click}
-             on:touchstart|preventDefault={touch_start}
-             on:touchmove={touch_move}
-             on:touchend={touch_end}
-             on:touchcancel={touch_end}
-             class="steno top-row">
-     </button>
-
-     <button id="R-"
-             aria-label="left R"
-             aria-pressed={!!state["R-"]}
-             on:click={handle_click}
-             on:touchstart|preventDefault={touch_start}
-             on:touchmove={touch_move}
-             on:touchend={touch_end}
-             on:touchcancel={touch_end}
-             class="steno bottom-row">
-     </button>
-
-     <div id="A-" class="vowel-container">
-         <!--note: the button ids don't have the dash, to distinguish them from the div ids!
-             (and also to make interfacing with the stroke library easier, where the vowels
-             don't have dashes either)-->
-             <button id="A"
-                     aria-label="A"
-                     aria-pressed={!!state["A"]}
-                     on:click={handle_click}
-                     on:touchstart|preventDefault={touch_start}
-                     on:touchmove={touch_move}
-                     on:touchend={touch_end}
-                     on:touchcancel={touch_end}
-                     class="steno left-vowel">
-             </button>
-     </div>
-
-     <div id="O-" class="vowel-container">
-         <button id="O"
-                 aria-label="O"
-                 aria-pressed={!!state["O"]}
+     {#each keys as key_name}
+         <button id={reverse_replace_map[key_name] || key_name}
+                 aria-label={""}
+                 aria-pressed={!!state[key_name]}
                  on:click={handle_click}
                  on:touchstart|preventDefault={touch_start}
                  on:touchmove={touch_move}
                  on:touchend={touch_end}
                  on:touchcancel={touch_end}
-                 class="steno left-vowel">
+                 on:keydown={steno_key_keydown}
+                 on:focus={steno_key_focus}
+                 tabindex={(steno_keyboard_layout[steno_keyboard_position[0]][steno_keyboard_position[1]] == key_name)? 0 : -1}
+                 bind:this={steno_keyboard_buttons[key_name]}
+
+                 class:long-key={(key_name == "S-") || (key_name == "*")}
+                 class:top-row={key_indices[key_name][0] == 1}
+                 class:bottom-row={key_indices[key_name][0] == 2}
+                 class:left-vowel={key_name == "A" || key_name == "O"}
+                 class:right-vowel={key_name == "E" || key_name == "U"}
+                 class="steno">
          </button>
-     </div>
-
-     <button id="star"
-             aria-label="asterisk"
-             aria-pressed={!!state["*"]}
-             on:click={handle_click}
-             on:touchstart|preventDefault={touch_start}
-             on:touchmove={touch_move}
-             on:touchend={touch_end}
-             on:touchcancel={touch_end}
-             class="steno long-key">
-     </button>
-
-     <div id="-E" class="vowel-container">
-         <button id="E"
-                 aria-label="E"
-                 aria-pressed={!!state["E"]}
-                 on:click={handle_click}
-                 on:touchstart|preventDefault={touch_start}
-                 on:touchmove={touch_move}
-                 on:touchend={touch_end}
-                 on:touchcancel={touch_end}
-                 class="steno right-vowel">
-         </button>
-     </div>
-
-     <div id="-U" class="vowel-container">
-         <button id="U"
-                 aria-label="U"
-                 aria-pressed={!!state["U"]}
-                 on:click={handle_click}
-                 on:touchstart|preventDefault={touch_start}
-                 on:touchmove={touch_move}
-                 on:touchend={touch_end}
-                 on:touchcancel={touch_end}
-                 class="steno right-vowel">
-         </button>
-     </div>
-
-     <button id="-F"
-             aria-label="right F"
-             aria-pressed={!!state["-F"]}
-             on:click={handle_click}
-             on:touchstart|preventDefault={touch_start}
-             on:touchmove={touch_move}
-             on:touchend={touch_end}
-             on:touchcancel={touch_end}
-             class="steno top-row">
-     </button>
-
-     <button id="-R"
-             aria-label="right R"
-             aria-pressed={!!state["-R"]}
-             on:click={handle_click}
-             on:touchstart|preventDefault={touch_start}
-             on:touchmove={touch_move}
-             on:touchend={touch_end}
-             on:touchcancel={touch_end}
-             class="steno bottom-row">
-     </button>
-
-     <button id="-P"
-             aria-label="right P"
-             aria-pressed={!!state["-P"]}
-             on:click={handle_click}
-             on:touchstart|preventDefault={touch_start}
-             on:touchmove={touch_move}
-             on:touchend={touch_end}
-             on:touchcancel={touch_end}
-             class="steno top-row">
-     </button>
-
-     <button id="-B"
-             aria-label="right B"
-             aria-pressed={!!state["-B"]}
-             on:click={handle_click}
-             on:touchstart|preventDefault={touch_start}
-             on:touchmove={touch_move}
-             on:touchend={touch_end}
-             on:touchcancel={touch_end}
-             class="steno bottom-row">
-     </button>
-
-     <button id="-L"
-             aria-label="right L"
-             aria-pressed={!!state["-L"]}
-             on:click={handle_click}
-             on:touchstart|preventDefault={touch_start}
-             on:touchmove={touch_move}
-             on:touchend={touch_end}
-             on:touchcancel={touch_end}
-             class="steno top-row">
-     </button>
-
-     <button id="-G"
-             aria-label="right G"
-             aria-pressed={!!state["-G"]}
-             on:click={handle_click}
-             on:touchstart|preventDefault={touch_start}
-             on:touchmove={touch_move}
-             on:touchend={touch_end}
-             on:touchcancel={touch_end}
-             class="steno bottom-row">
-     </button>
-
-     <button id="-T"
-             aria-label="right T"
-             aria-pressed={!!state["-T"]}
-             on:click={handle_click}
-             on:touchstart|preventDefault={touch_start}
-             on:touchmove={touch_move}
-             on:touchend={touch_end}
-             on:touchcancel={touch_end}
-             class="steno top-row">
-     </button>
-
-     <button id="-S"
-             aria-label="right S"
-             aria-pressed={!!state["-S"]}
-             on:click={handle_click}
-             on:touchstart|preventDefault={touch_start}
-             on:touchmove={touch_move}
-             on:touchend={touch_end}
-             on:touchcancel={touch_end}
-             class="steno bottom-row">
-     </button>
-
-     <button id="-D"
-             aria-label="right D"
-             aria-pressed={!!state["-D"]}
-             on:click={handle_click}
-             on:touchstart|preventDefault={touch_start}
-             on:touchmove={touch_move}
-             on:touchend={touch_end}
-             on:touchcancel={touch_end}
-             class="steno top-row">
-     </button>
-
-     <button id="-Z"
-             aria-label="right Z"
-             aria-pressed={!!state["-Z"]}
-             on:click={handle_click}
-             on:touchstart|preventDefault={touch_start}
-             on:touchmove={touch_move}
-             on:touchend={touch_end}
-             on:touchcancel={touch_end}
-             class="steno bottom-row">
-     </button>
+     {/each}
  </div>
