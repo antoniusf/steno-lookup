@@ -288,8 +288,8 @@
     }
 
     button/*.keyboard-toggle*/:focus {
-outline: 2px solid black;
-outline-offset: 2px;
+        outline: 2px solid black;
+        outline-offset: 2px;
     }
 
     button.keyboard-toggle > img {
@@ -332,6 +332,12 @@ outline-offset: 2px;
         color: white;
         cursor: pointer;
         height: 0;
+    }
+
+    button.steno:focus {
+        outline: 2px solid #e50078;
+        outline-offset: 2px;
+        z-index: 10; /* make sure the focus ring is visible */
     }
 
     button#number {
@@ -471,6 +477,16 @@ outline-offset: 2px;
     button#-Z {
         grid-area: -Z;
     }
+
+    p#steno-keyboard-hint {
+        margin: 1rem;
+        font-size: 0.9rem;
+        color: #444;
+    }
+
+    p#steno-keyboard-hint[hidden] {
+        display:none;
+    }
 </style>
 
 <button
@@ -479,8 +495,10 @@ outline-offset: 2px;
           on:click={(event) => {show_keyboard = !show_keyboard;} }>
 
           <img src={show_keyboard? "collapse-icon.svg" : "expand-icon.svg"} alt=""/>
-          <span>{show_keyboard? "hide steno keyboard" : "show steno keyboard"}</span>
+          <span>{show_keyboard? "hide virtual stenotype" : "show virtual stenotype"}</span>
 </button>
+
+<p id="steno-keyboard-hint" hidden={!show_keyboard}>Keyboard users: Use the arrow keys to move focus in between buttons on the virtual stenotype. To move focus back out of the stenotype, just use tab or shift-tab once.</p>
 
 <div id="steno-keyboard" hidden={!show_keyboard} role="group" aria-label="steno keyboard">
     {#each keys as key_name}
