@@ -42,7 +42,7 @@
         [null, null, "A",  "O", null, "E",  "U",  null, null, null]
     ];
 
-    // map each key to it
+    // map each key to its (row, column) index
     let steno_keyboard_key_indices = {};
     for (let rowindex = 0; rowindex < steno_keyboard_layout.length; rowindex++) {
         let row = steno_keyboard_layout[rowindex];
@@ -55,6 +55,36 @@
             }
         }
     }
+
+    let steno_keyboard_keymap = {
+        "KeyQ": "S-",
+        "KeyA": "S-",
+        "KeyW": "T-",
+        "KeyS": "K-",
+        "KeyE": "P-",
+        "KeyD": "W-",
+        "KeyR": "H-",
+        "KeyF": "R-",
+        "KeyC": "A",
+        "KeyV": "O",
+        "KeyT": "*",
+        "KeyG": "*",
+        "KeyY": "*",
+        "KeyH": "*",
+        "KeyN": "E",
+        "KeyM": "U",
+        "KeyU": "-F",
+        "KeyJ": "-R",
+        "KeyI": "-P",
+        "KeyK": "-B",
+        "KeyO": "-L",
+        "KeyL": "-G",
+        "KeyP": "-T",
+        "Semicolon": "-S",
+        "Quote": "-D",
+        "BracketLeft": "-Z"
+    }
+
 
     const steno_keyboard_buttons = {};
     let steno_keyboard_position = [0, 0];
@@ -212,11 +242,13 @@
             case "Down":
             case "ArrowDown":
                 try_move_focus([1, 0]);
+                event.preventDefault();
                 break;
 
             case "Up":
             case "ArrowUp":
                 try_move_focus([-1, 0]);
+                event.preventDefault();
                 break;
 
             case "Left":
@@ -228,6 +260,12 @@
             case "ArrowRight":
                 try_move_focus([0, 1]);
                 break;
+
+	    default:
+	        let mapping = steno_keyboard_keymap[event.key];
+            if (mapping) {
+                state[mapping] = true;
+            }
         }
     }
 
