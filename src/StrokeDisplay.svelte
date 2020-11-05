@@ -276,12 +276,12 @@
     button.keyboard-toggle {
         margin: 0;
         padding: 0.2em 0.4em 0.2em 0.2em;
-        background-color: #ab005a;
-        color: white;
+	background-color: white;
+        color: black;
         border: none;
         cursor: pointer;
-        font-size: 0.9rem;
         margin: 0 auto;
+	margin-left: 0.5em;
         margin-bottom: 1em;
         display: flex;
         align-items: center;
@@ -296,6 +296,7 @@
         vertical-align: middle;
         height: 1.1em;
         margin-right: 0.1em;
+	filter: brightness(0);
     }
 
     button.keyboard-toggle > span {
@@ -495,7 +496,7 @@
           on:click={(event) => {show_keyboard = !show_keyboard;} }>
 
           <img src={show_keyboard? "collapse-icon.svg" : "expand-icon.svg"} alt=""/>
-          <span>{show_keyboard? "hide virtual stenotype" : "show virtual stenotype"}</span>
+          <span>virtual stenotype</span>
 </button>
 
 <p id="steno-keyboard-hint" hidden={!show_keyboard}>Keyboard users: Use the arrow keys to move focus in between buttons on the virtual stenotype. To move focus back out of the stenotype, just use tab or shift-tab once.</p>
