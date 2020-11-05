@@ -81,8 +81,8 @@
         "KeyL": "-G",
         "KeyP": "-T",
         "Semicolon": "-S",
-        "Quote": "-D",
-        "BracketLeft": "-Z"
+        "BracketLeft": "-D",
+        "Quote": "-Z"
     }
 
 
@@ -91,9 +91,19 @@
 
     let show_keyboard = true;
 
+    // the state of each button on the on-screen keyboard
     let state = {};
+    // the state of each key on the connected stenotype/keyboard.
+    // this distinction is necessary because the full stroke is
+    // always accumulated into `state`, which is also what is forwarded
+    // to the lookup. however, this requires the buttons in `state` to be
+    // held for longer than the actual keyboard keys, since (a) steno keys
+    // are accumulated until the stroke is released, and (b) we want to keep
+    // showing the stroke even after it has been released.
+    let steno_keyboard_physical_state = {};
     for (const key of keys) {
         state[key] = false;
+        steno_keyboard_physical_state[key] = false;
     }
 
     export let stroke = 0;
@@ -261,11 +271,33 @@
                 try_move_focus([0, 1]);
                 break;
 
-	    default:
-	        let mapping = steno_keyboard_keymap[event.key];
-            if (mapping) {
-                state[mapping] = true;
-            }
+            default:
+                let mapping = steno_keyboard_keymap[event.code];
+                if (mapping) {
+                    let total_keys_pressed_before = Object.values(steno_keyboard_physical_state).reduce((acc, value) => acc + value, 0);
+
+                    // the (steno) keyboard was clear before this key was pressed, which
+                    // means that this is a new stroke, which means that we clear the old
+                    // stroke from the visual display.
+                    if (total_keys_pressed_before == 0) {
+                        for (const key of keys) {
+                            state[key] = 0;
+                        }
+                    }
+
+                    // then, set the new key.
+                    steno_keyboard_physical_state[mapping] = 1;
+                    state[mapping] = 1;
+                    stroke_changed()
+                }
+        }
+    }
+
+    function steno_key_keyup(event) {
+        let mapping = steno_keyboard_keymap[event.code];
+        if (mapping) {
+            steno_keyboard_physical_state[mapping] = 0;
+            stroke_changed();
         }
     }
 
@@ -550,6 +582,7 @@
                 on:touchend={touch_end}
                 on:touchcancel={touch_end}
                 on:keydown={steno_key_keydown}
+                on:keyup={steno_key_keyup}
                 on:focus={steno_key_focus}
                 tabindex={(steno_keyboard_layout[steno_keyboard_position[0]][steno_keyboard_position[1]] == key_name)? 0 : -1}
                 bind:this={steno_keyboard_buttons[key_name]}
