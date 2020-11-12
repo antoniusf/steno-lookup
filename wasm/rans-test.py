@@ -15,6 +15,8 @@ import numpy as np
 #     b should also divide l (this makes things simpler, since we always transfer the same number of bits)
 # 
 # i think i'll use 64 bit ints as state, because why not
+# (actually, my old phone is armv7, which is 32 bits, so yeah)
+# (i did some tests and 32 bits is enough anyway)
 # 
 # make l as large as possible:
 # 
@@ -41,7 +43,7 @@ import numpy as np
 #     give delta H = m * 1e-11 bits / symbol = 0.0003 bits / symbol. this feels pretty okay, but i don't think we should
 #     stretch it further.
 
-l = 2**24
+l = 2**23
 m = 2**16
 m_bits = 16
 k = l / m
@@ -128,7 +130,25 @@ def rans_encode(state, symbol, cumulative, output):
     # encode
     # find which m-block the current state falls into (for this symbol)
     # int division rounds down
-    block_index = state // symbol_count
+
+    # use alverson 91 integer reciprocals
+    # yes i know it doesn't make sense to do it this way,
+    # i just want to make sure i know how it works
+    shift = 0
+    while symbol_count > (1 << shift):
+        shift += 1 # i just stole this from ryg's code
+
+    shift += 31
+    # this is the same as ceil(2**shift / symbol_count)
+    # i also stole this from ryg, but it's a well-known
+    # trick apparently
+    a = ((1 << shift) + symbol_count - 1) // symbol_count
+    block_index = (state * a) >> shift
+    block_index_should_be = state // symbol_count
+    if block_index != block_index_should_be:
+        print(f"target result: {block_index_should_be}, reciprocals: {block_index}")
+        print(f"divisor is {symbol_count}, shift is {shift - 31}")
+    #block_index = state // symbol_count
 
     # offset into the section of that symbol on that block
     offset_from_start_of_symbol_section = state % int(symbol_count)
@@ -202,7 +222,7 @@ cumulative = [int(e) for e in cumulative]
 
 print("encoding")
 output = bytearray()
-state = 2**32 - 1
+state = 2**31 - 1
 
 # idea for pre-filling the state (note that we don't have to get
 # it up to at least l, just anything that isn't super low will
@@ -237,7 +257,7 @@ print(states[-2])
 print(states[-1])
 print(state)
 
-coded_entropy = math.log2(state) + len(output)*8 - 32
+coded_entropy = math.log2(state) + len(output)*8 - 31
 print(f"final entropy of encoded data: {coded_entropy:.3f}")
 
 while state > 0:
@@ -249,7 +269,7 @@ while state > 0:
 #print(output)
 
 result = bytearray()
-while state != 2**32 - 1:
+while state != 2**31 - 1:
     state, symbol = rans_decode(state, cumulative, output)
     #print("state:", state)
     #print("decoded symbol:", symbol)
