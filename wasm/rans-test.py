@@ -43,66 +43,112 @@ import numpy as np
 #     give delta H = m * 1e-11 bits / symbol = 0.0003 bits / symbol. this feels pretty okay, but i don't think we should
 #     stretch it further.
 
-l = 2**23
-m = 2**16
+# this means that l*b will be at most 2**31 - 1.
+# we need the state to be only 31 bits, not 32,
+# so that the reciprocal multiplication will work.
+# (needs 2*w + 1 bits, so with 32 we'd land at 65,
+# which is not handy. plus, the reciprocal needs
+# w + 1 bits, so with w = 31 it will fit into a
+# 32-bit variable.
+
+l_bits = 23
 m_bits = 16
+l = 1 << l_bits
+m = 1 << m_bits
 k = l / m
 b = 256
 
 def discretize_frequencies(frequencies):
 
-    first_guess = [max(1, round(frequency*m)) for frequency in frequencies]
-    error = sum(first_guess) - m
+    first_guess = []
+    for frequency in frequencies:
+        scaled = frequency*m
+        down = int(scaled)
+        up = down + 1
 
-    print(error)
+        if scaled**2 < down * up:
+            first_guess.append(down)
+        else:
+            first_guess.append(up)
+
     print(first_guess)
 
-    if error > 0:
-        # we have used too many slots, so those items where the rounding_error is highest (i.e. where the count
-        # is higher than what it should be) will get downgraded. Exception: symbols where the count is already
-        # only one, we still need to be able to encode these.
-        rounding_errors = [(count - frequency*m, index)
-                for index, (count, frequency)
-                in enumerate(zip(first_guess, frequencies))
-                if count > 1]
+    correction = m - sum(first_guess)
+    correction_sign = -1 if correction < 0 else 1
 
-        # sort the highest first
-        rounding_errors.sort(reverse=True)
+    codelen_deltas = []
+    for symbol, (scaled, frequency) in enumerate(zip(first_guess, frequencies)):
+        if (scaled + correction_sign) == 0:
+            codelen_delta = np.inf
+        else:
+            codelen_delta = frequency * np.log2(np.float64(scaled) / (scaled + correction_sign))
+        codelen_deltas.append((symbol, codelen_delta))
 
-        for _ in range(error):
-            # take the highest item
-            error, index = rounding_errors.pop(0)
-            first_guess[index] -= 1
+    codelen_deltas.sort(key=lambda e: e[1])
 
-            if first_guess[index] > 1:
-                # put it back
-                # since we have rounding differences, which are between [-0.5, 0.5),
-                # this is now automatically the smallest item
-                rounding_errors.append((error - 1, index))
+    while correction != 0:
+        symbol, delta = codelen_deltas.pop(0)
+        first_guess[symbol] += correction_sign
+        if (first_guess[symbol] + correction_sign) == 0:
+            delta = np.inf
+        else:
+            delta = frequencies[symbol] * np.log2(np.float64(first_guess[symbol]) / (first_guess[symbol] + correction_sign))
 
-    elif error < 0:
-        # we have used too few slots, so we can distribute some extra.
-        rounding_errors = [(count-frequency*m, index)
-                for index, (count, frequency)
-                in enumerate(zip(first_guess, frequencies))]
+        correction -= correction_sign
+        
+        # who cares about perf anyways??
+        # computer go brrr
+        codelen_deltas.append((symbol, delta))
+        codelen_deltas.sort(key=lambda e: e[1])
 
-        # sort the smallest first (this is going to be a negative number probably)
-        rounding_errors.sort()
 
-        for _ in range(error):
-            error, index = rounding_errors.pop(0)
-            first_guess[index] += 1
+    #if error > 0:
+    #    # we have used too many slots, so those items where the rounding_error is highest (i.e. where the count
+    #    # is higher than what it should be) will get downgraded. Exception: symbols where the count is already
+    #    # only one, we still need to be able to encode these.
+    #    rounding_errors = [(count - frequency*m, index)
+    #            for index, (count, frequency)
+    #            in enumerate(zip(first_guess, frequencies))
+    #            if count > 1]
 
-            # this is probably unnecessary? if everyone got rounded down,
-            # the most we could have left over should be 256, i.e. everyone
-            # gets an extra slot. so putting them back at the end shouldn't
-            # be necessary.
-            rounding_errors.append((error + 1, index))
+    #    # sort the highest first
+    #    rounding_errors.sort(reverse=True)
+
+    #    for _ in range(error):
+    #        # take the highest item
+    #        error, index = rounding_errors.pop(0)
+    #        first_guess[index] -= 1
+
+    #        if first_guess[index] > 1:
+    #            # put it back
+    #            # since we have rounding differences, which are between [-0.5, 0.5),
+    #            # this is now automatically the smallest item
+    #            rounding_errors.append((error - 1, index))
+
+    #elif error < 0:
+    #    # we have used too few slots, so we can distribute some extra.
+    #    rounding_errors = [(count-frequency*m, index)
+    #            for index, (count, frequency)
+    #            in enumerate(zip(first_guess, frequencies))]
+
+    #    # sort the smallest first (this is going to be a negative number probably)
+    #    rounding_errors.sort()
+
+    #    for _ in range(error):
+    #        error, index = rounding_errors.pop(0)
+    #        first_guess[index] += 1
+
+    #        # this is probably unnecessary? if everyone got rounded down,
+    #        # the most we could have left over should be 256, i.e. everyone
+    #        # gets an extra slot. so putting them back at the end shouldn't
+    #        # be necessary.
+    #        rounding_errors.append((error + 1, index))
 
     # there should be no zero counts, we need to be able to encode everything
     # we see
-    assert first_guess.count(0) == 0
+    #assert first_guess.count(0) == 0
 
+    print(first_guess)
     cumulative = []
     accumulator = 0
     for count in first_guess:
@@ -169,7 +215,11 @@ def rans_decode(state, cumulative, data):
     # pull new bytes if necessary
     while state < l and len(data) > 0:
         state = (state << 8) | data.pop()
-        print("refilling:", state)
+        #print("refilling:", state)
+
+    if state < l:
+        # we're done!
+        raise StopIteration(state)
 
     block_index = state // m
     offset_from_start_of_block = state & ((1 << m_bits) - 1)
@@ -189,10 +239,6 @@ def rans_decode(state, cumulative, data):
     occurences_of_symbol_before_this_block = symbol_count * block_index
 
     state = occurences_of_symbol_before_this_block + offset_from_start_of_symbol_section
-
-    # pull new bytes if necessary
-    while state < l and len(data) > 0:
-        state = (state << 8) | data.pop()
 
     return state, symbol
 
@@ -222,7 +268,16 @@ cumulative = [int(e) for e in cumulative]
 
 print("encoding")
 output = bytearray()
-state = 2**31 - 1
+
+# start below the valid range for l, so that
+# the decoder knows when to stop
+# i.e.: state < l = 2**23
+# we want to set the first bit, to make
+# sure that the value is never too small.
+# => bonus_value < l / 2 = 2**(23 - 1)
+bonus_value = 0
+assert bonus_value < (1 << (l_bits - 1))
+state = bonus_value + (1 << (l_bits - 1))
 
 # idea for pre-filling the state (note that we don't have to get
 # it up to at least l, just anything that isn't super low will
@@ -241,15 +296,15 @@ state = 2**31 - 1
 
 states = []
 
-#for word in words:
-#    for char in reversed(word.encode("utf-8")):
-#        states.append(state)
-#        state = rans_encode(state, char, cumulative, output)
-#        #print(state, output)
+for word in words:
+    for char in reversed(word.encode("utf-8")):
+        states.append(state)
+        state = rans_encode(state, char, cumulative, output)
+        #print(state, output)
 
-for char in reversed("hello world".encode("utf-8")):
-    states.append(state)
-    state = rans_encode(state, char, cumulative, output)
+#for char in reversed("hello world".encode("utf-8")):
+#    states.append(state)
+#    state = rans_encode(state, char, cumulative, output)
 
 print(words[-1].encode("utf-8"))
 
@@ -257,7 +312,7 @@ print(states[-2])
 print(states[-1])
 print(state)
 
-coded_entropy = math.log2(state) + len(output)*8 - 31
+coded_entropy = math.log2(state) + len(output)*8 - (l_bits - 1)
 print(f"final entropy of encoded data: {coded_entropy:.3f}")
 
 while state > 0:
@@ -269,26 +324,31 @@ while state > 0:
 #print(output)
 
 result = bytearray()
-while state != 2**31 - 1:
-    state, symbol = rans_decode(state, cumulative, output)
+while True:
+    try:
+        state, symbol = rans_decode(state, cumulative, output)
+    except StopIteration as e:
+        state = e.value
+        print(f"The bonus value was: {state - (1 << (l_bits - 1))}")
+        break
     #print("state:", state)
     #print("decoded symbol:", symbol)
     #assert state == states.pop()
-    should_be = states.pop()
-    if state != should_be:
-        print(f"state should be {should_be}, but is {state} instead")
-        assert False
+    #should_be = states.pop()
+    #if state != should_be:
+    #    print(f"state should be {should_be}, but is {state} instead")
+    #    assert False
     result.append(symbol)
 
-#compare = b"".join(w.encode("utf-8") for w in reversed(words))
-#assert compare == result
+compare = b"".join(w.encode("utf-8") for w in reversed(words))
+assert compare == result
 
 #print(result)
 entropy = 0
 for char in result:
     entropy += get_entropy_for_char(char)
 
-print(result.decode("utf-8"))
+#print(result.decode("utf-8"))
 
 print(f"entropy in result: {entropy}")
 print(f"loss: {coded_entropy - entropy:.3f} bits")
