@@ -1,6 +1,6 @@
 {
   "name": "steno-lookup",
-  "version": "0.0.18",
+  "version": "0.0.19",
   "scripts": {
     "build": "rollup -c",
     "dev": "rollup -c -w",
