@@ -1,14 +1,15 @@
-use core::mem::{size_of, align_of};
+// TODO temporary!!
+#![allow(dead_code)]
+use core::mem::size_of;
 use core::convert::TryInto;
 use core::iter::Iterator;
-use core::marker::PhantomData;
 use core::hash::Hasher;
 use core::borrow::Borrow;
 use wyhash::{wyhash, WyHash};
 
-struct Entry<'a> {
-    pub offset: usize,
-    pub length: usize,
+pub struct Entry<'a> {
+    offset: usize,
+    length: usize,
     pub key: &'a [u8],
     pub value: u32
 }
@@ -39,15 +40,29 @@ impl<'a> Entry<'a> {
         Entry::new_with_length(data, offset, length)
     }
 
-    pub fn set_value(&self, data: &mut [u8], value: u32) {
-        let value_bytes =
-            &mut data[self.offset + self.length - 4 .. self.offset + self.length];
-        
-        value_bytes.copy_from_slice(&value.to_ne_bytes());
+    pub fn get_offset(&self) -> usize {
+        self.offset
+    }
+
+    pub fn to_handle(self) -> EntryHandle {
+        EntryHandle {
+            offset: self.offset,
+            length: self.length
+        }
     }
 }
 
-struct BucketEntryIterator<'a> {
+// the purpose of EntryHandle is to not contain any borrows from
+// the hashtable, while keeping position and length such that
+// entry values can be conveniently set on the hashtable. (this
+// wouldn't be possible otherwise, since entry contains an immutable
+// borrow into the hashtable, but we need a mutable borrow to modify.
+pub struct EntryHandle {
+    offset: usize,
+    length: usize
+}
+
+pub struct BucketEntryIterator<'a> {
     starting_offset: usize,
     offset: usize,
     end: usize,
@@ -294,7 +309,7 @@ fn get_bucket_index_from_iterator(iterator: impl Iterator<Item = impl Borrow<u8>
 
 // keys are always (&)[u8]
 // values are always u32
-struct HashTable<'a> {
+pub struct HashTable<'a> {
     buckets: &'a [usize],
     data: &'a mut [u8]
 }
@@ -346,7 +361,44 @@ impl<'a> HashTable<'a> {
         None
     }
 
-    pub fn set_value(&mut self, entry: &Entry<'_>, value: u32) {
-        entry.set_value(self.data, value);
+    pub fn set_value(&mut self, entry_handle: EntryHandle, value: u32) {
+        let entry_end = entry_handle.offset + entry_handle.length;
+        let value_bytes =
+            &mut self.data[entry_end - 4 .. entry_end];
+
+        value_bytes.copy_from_slice(&value.to_ne_bytes());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Clone)]
+    struct TestIterator {
+        data: &'static [u8],
+        offset: usize
+    }
+
+    impl Iterator for TestIterator {
+        type Item = core::slice::Iter<'static, u8>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.offset + 4 < self.data.len() {
+                Some(self.data[self.offset..self.offset+4].iter())
+            }
+            else {
+                None
+            }
+        }
+    }
+    
+    #[test]
+    fn test_hashtable_initialization () {
+        let mut test_iterator = TestIterator {
+            data: b"asdf bla hello world",
+            offset: 0
+        };
+        let mut hash_table_maker = HashTableMaker::initialize(test_iterator);
     }
 }
