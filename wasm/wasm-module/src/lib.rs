@@ -9,7 +9,6 @@ use core::fmt::Write;
 use core::convert::TryInto;
 use core::borrow::Borrow;
 
-mod hashtable;
 use hashtable::HashTableMaker;
 
 #[link(wasm_import_module = "env")]

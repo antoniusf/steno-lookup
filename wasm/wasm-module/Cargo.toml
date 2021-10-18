@@ -1,0 +1,17 @@
+[package]
+name = "wasm-module"
+version = "0.1.0"
+#authors = ["Antonius Frie <antonius.frie@ruhr-uni-bochum.de>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+hashtable = { path = "../hashtable" }
+
+[profile.release]
+lto = true
+opt-level = 's'

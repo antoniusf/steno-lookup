@@ -1,3 +1,5 @@
+#![no_std]
+
 // TODO temporary!!
 #![allow(dead_code)]
 use core::mem::size_of;
