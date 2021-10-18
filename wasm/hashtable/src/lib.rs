@@ -1,5 +1,3 @@
-#![no_std]
-
 // TODO temporary!!
 #![allow(dead_code)]
 use core::mem::size_of;
@@ -96,7 +94,7 @@ impl<'a> Iterator for BucketEntryIterator<'a> {
 
         let data = self.data.as_ref();
 
-        let length = data[self.offset] as usize + ((data[self.offset] as usize) << 8);
+        let length = data[self.offset] as usize + ((data[self.offset + 1] as usize) << 8);
 
         // this is only needed during initialization
         if length == 0 {
@@ -158,7 +156,8 @@ where
 
     pub fn get_data_length(&self) -> usize {
         let num_headerbytes_total = self.num_entries * 2;
-        let data_length = num_headerbytes_total + self.num_keybytes_total;
+        let num_payload_bytes_total = self.num_entries * 4;
+        let data_length = num_headerbytes_total + self.num_keybytes_total + num_payload_bytes_total;
 
         data_length
     }
@@ -184,7 +183,7 @@ where
         }
 
         let header_size = 2;
-        let payload_size = size_of::<usize>();
+        let payload_size = size_of::<u32>();
 
         for key in self.keys.clone() {
             let total_size = header_size + key.clone().count() + payload_size;
@@ -238,6 +237,8 @@ where
                 offset += length as usize;
             }
 
+            let initial_offset = offset;
+
             let key_length = key.clone().count();
             let length = header_size + key_length + payload_size;
             assert!(length < 0xFFFF);
@@ -261,7 +262,7 @@ where
                 &u32::MAX.to_ne_bytes());
             offset += 4;
 
-            assert_eq!(offset - buckets[index], length);
+            assert_eq!(offset - initial_offset, length);
 
             let bucket_end = *buckets.get(index + 1).unwrap_or(&data.len());
             let this_bucket_is_full = offset == bucket_end;
@@ -383,13 +384,40 @@ mod tests {
     }
 
     impl Iterator for TestIterator {
-        type Item = core::slice::Iter<'static, u8>;
+        type Item = InnerTestIterator;
 
         fn next(&mut self) -> Option<Self::Item> {
-            if self.offset + 4 < self.data.len() {
-                Some(self.data[self.offset..self.offset+4].iter())
+            if self.offset + 4 <= self.data.len() {
+                let slice = &self.data[self.offset..self.offset+4];
+                self.offset += 1;
+                //Some(slice.iter())
+                Some(InnerTestIterator { data: slice, offset: 0, tag: self.offset })
             }
             else {
+                println!("finished outer iterator");
+                None
+            }
+        }
+    }
+
+    #[derive(Clone)]
+    struct InnerTestIterator {
+        data: &'static [u8],
+        offset: usize,
+        tag: usize
+    }
+
+    impl Iterator for InnerTestIterator {
+        type Item = u8;
+        
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.offset < self.data.len() {
+                let value = self.data[self.offset];
+                self.offset += 1;
+                Some(value)
+            }
+            else {
+                // println!("finished inner iterator offset {}", self.tag);
                 None
             }
         }
@@ -397,10 +425,26 @@ mod tests {
     
     #[test]
     fn test_hashtable_initialization () {
-        let mut test_iterator = TestIterator {
+        let test_iterator = TestIterator {
             data: b"asdf bla hello world",
             offset: 0
         };
-        let mut hash_table_maker = HashTableMaker::initialize(test_iterator);
+        let mut hash_table_maker = HashTableMaker::initialize(test_iterator.clone());
+        let buckets_length = hash_table_maker.get_buckets_length();
+        let data_length = hash_table_maker.get_data_length();
+
+        let mut buckets: Vec<usize> = std::iter::repeat(0).take(buckets_length).collect();
+        let mut data: Vec<u8> = std::iter::repeat(0).take(data_length).collect();
+
+        let mut hash_table = hash_table_maker.make_hash_table(&mut buckets[..], &mut data[..]);
+
+        for (i, key) in test_iterator.clone().enumerate() {
+            hash_table.set_unset_value(&(key.collect::<Vec<u8>>()), i as u32);
+        }
+
+        for (i, key) in test_iterator.enumerate() {
+            let retrieved_value = hash_table.get_value(&(key.collect::<Vec<u8>>()));
+            assert_eq!(retrieved_value, Some(i as u32));
+        }
     }
 }
