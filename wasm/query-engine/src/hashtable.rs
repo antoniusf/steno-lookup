@@ -210,26 +210,20 @@ where
         for bucket in buckets.iter_mut() {
             let bucket_size = *bucket;
 
-            if bucket_size > 0 {
-                *bucket = offset;
-                offset += bucket_size;
+            *bucket = offset;
+            offset += bucket_size;
 
+            if bucket_size > 0 {
                 // initialize the corresponding data section
+                // TODO: do we need to do this or can we assume the buffer is zeroed? (1/2)
                 data[*bucket .. *bucket + 2].copy_from_slice(
                     &0_u16.to_ne_bytes());
-            }
-            else {
-                // mark this as an empty bucket
-                *bucket = usize::max_value();
             }
         }
 
         println!("inserting keys");
-        let mut num = 0;
 
         for key in self.keys.clone() {
-            println!("{}", num);
-            num += 1;
             let index = get_bucket_index_from_iterator(key.clone(), buckets);
             let mut offset = buckets[index];
 
@@ -276,6 +270,7 @@ where
             let this_bucket_is_full = offset == bucket_end;
             if !this_bucket_is_full {
                 // set empty marker for the next entry
+                // TODO: do we need to do this or can we assume the buffer is zeroed? (2/2)
                 data[offset .. offset + 2].copy_from_slice(
                     &0_u16.to_ne_bytes());
             }
