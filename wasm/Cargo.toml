@@ -2,9 +2,8 @@
 members = [
     "wasm-module",
     "query-engine",
-    "hashtable",
 ]
 
 [profile.test]
-opt-level = "s"
+opt-level = 3
 lto = true

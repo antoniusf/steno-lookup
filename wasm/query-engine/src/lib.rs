@@ -9,6 +9,8 @@ use core::fmt::Write;
 use core::convert::TryInto;
 use core::borrow::Borrow;
 
+mod hashtable;
+
 use hashtable::HashTableMaker;
 
 pub struct InternalError<'a> {
@@ -767,6 +769,8 @@ fn parse_stroke_fast(buffer: &[u8], pos: &mut usize) -> u32 {
 //    let index = (hash as usize) % hashmap.len();
 //
 //    let bucket_offset = hashmap[index];
+//    // TODO: fix this. empty buckets are now marked by simply containing nothing,
+//    // which you can check by comparing them to the offset of the next one
 //    if bucket_offset == usize::max_value() {
 //        // no results
 //        return Ok(());

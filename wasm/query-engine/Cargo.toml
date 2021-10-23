@@ -7,7 +7,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-hashtable = { path = "../hashtable" }
+wyhash = "0.3.0"
 
 [profile.test]
 opt-level = 3
@@ -15,7 +15,7 @@ debug = false
 split-debuginfo = '...'  # Platform-specific.
 debug-assertions = false
 overflow-checks = false
-lto = false
+lto = true
 panic = 'unwind'    # This setting is always ignored.
 incremental = false
 codegen-units = 16
