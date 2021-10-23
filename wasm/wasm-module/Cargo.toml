@@ -10,7 +10,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-hashtable = { path = "../hashtable" }
+query-engine = { path = "../query-engine" }
 
 [profile.release]
 lto = true

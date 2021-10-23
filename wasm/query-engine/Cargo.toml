@@ -1,0 +1,27 @@
+[package]
+name = "query-engine"
+version = "0.1.0"
+authors = ["Antonius Frie <antonius.frie@ruhr-uni-bochum.de>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+hashtable = { path = "../hashtable" }
+
+[profile.test]
+opt-level = 3
+debug = false
+split-debuginfo = '...'  # Platform-specific.
+debug-assertions = false
+overflow-checks = false
+lto = false
+panic = 'unwind'    # This setting is always ignored.
+incremental = false
+codegen-units = 16
+rpath = false
+
+[profile.release]
+lto = true
+
+

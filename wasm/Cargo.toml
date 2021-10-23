@@ -1,5 +1,10 @@
 [workspace]
 members = [
     "wasm-module",
+    "query-engine",
     "hashtable",
 ]
+
+[profile.test]
+opt-level = "s"
+lto = true
