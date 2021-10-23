@@ -309,6 +309,7 @@ fn get_bucket_index_from_iterator(iterator: impl Iterator<Item = impl Borrow<u8>
         }
 
         buffer[buffer_pos] = *byte.borrow();
+        buffer_pos += 1
     }
 
     hasher.write(&buffer[..buffer_pos]);
