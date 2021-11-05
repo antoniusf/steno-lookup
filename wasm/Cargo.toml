@@ -3,7 +3,3 @@ members = [
     "wasm-module",
     "query-engine",
 ]
-
-[profile.test]
-opt-level = 3
-lto = true

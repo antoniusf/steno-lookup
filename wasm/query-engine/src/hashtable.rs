@@ -1,4 +1,3 @@
-#![cfg_attr(all(not(test), target_family = "wasm"), no_std)]
 // TODO temporary!!
 #![allow(dead_code)]
 use core::mem::size_of;
@@ -186,8 +185,6 @@ where
         let header_size = 2;
         let payload_size = size_of::<u32>();
 
-        println!("computing bucket sizes");
-
         for key in self.keys.clone() {
             let total_size = header_size + key.clone().count() + payload_size;
 
@@ -220,8 +217,6 @@ where
                     &0_u16.to_ne_bytes());
             }
         }
-
-        println!("inserting keys");
 
         for key in self.keys.clone() {
             let index = get_bucket_index_from_iterator(key.clone(), buckets);

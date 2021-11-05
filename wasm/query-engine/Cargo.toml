@@ -8,20 +8,3 @@ edition = "2021"
 
 [dependencies]
 wyhash = "0.3.0"
-
-[profile.test]
-opt-level = 3
-debug = false
-split-debuginfo = '...'  # Platform-specific.
-debug-assertions = false
-overflow-checks = false
-lto = true
-panic = 'unwind'    # This setting is always ignored.
-incremental = false
-codegen-units = 16
-rpath = false
-
-[profile.release]
-lto = true
-
-

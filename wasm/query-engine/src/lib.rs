@@ -210,36 +210,23 @@ impl<'a> Iterator for ParseStrokesIterator<'a> {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
-fn allocate_memory_buffer(size: usize) -> *mut u8 {
-    // allocate a u64 vec to get the correct alignment
-    // (technically we only need 4 bytes, so u32 would be enough,
-    // buuut just in case...)
-    let vec_size = (size - 1) / size_of::<u64>() + 1;
-    let mut backing_vec: Vec<u64> = Vec::with_capacity(vec_size);
-    backing_vec.resize(vec_size, 0);
+pub trait DataStructuresContainer {
+    fn allocate(len_usize_buffer: usize, len_u8_buffer: usize) -> Self;
+    fn get_usize_buffer(&self) -> &[usize];
+    fn get_usize_buffer_mut(&mut self) -> &mut [usize];
+    fn get_u8_buffer(&self) -> &[u8];
+    fn get_u8_buffer_mut(&mut self) -> &mut [u8];
 
-    let slice = backing_vec.leak();
-    return slice.as_mut_ptr() as *mut u8;
-}
-
-#[cfg(target_family = "wasm")]
-fn allocate_memory_buffer(size: usize) -> *mut u8 {
-    let wasm_page_size = 65536;
-    // this is just a rounding-up division for ints.
-    let number_of_new_pages = (memory_needed - 1) / wasm_page_size + 1;
-
-    // allocate new memory
-    let previous_mem_size_pages = core::arch::wasm32::memory_grow(0, number_of_new_pages);
-    let new_memory_start = previous_mem_size_pages * wasm_page_size;
-
-    return new_memory_start as *mut u8;
+    // borrowing both buffers mutably would not be possible otherwise
+    fn get_both_buffers_mut(&mut self) -> (&mut [usize], &mut [u8]);
 }
 
 const FORMAT_VERSION: u32 = 0x00_01_00_03;
 
 // loads a json array into our custom memory format.
-pub fn load_json_internal(mut buffer: &mut [u8]) -> InternalResult<usize> {
+pub fn load_json_internal<ContainerType>(mut buffer: &mut [u8]) -> InternalResult<ContainerType>
+    where ContainerType: DataStructuresContainer
+{
     // in-place parsing turned out to not be possible in the end.
     // so, we're not going to do it.
     //
@@ -323,83 +310,39 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> InternalResult<usize> {
     let mut strings_table_maker = HashTableMaker::initialize(strings_iterator.clone());
     strings_table_maker.set_load_factor(hash_table_load_factor);
 
-    let memory_needed = size_of::<Header>()
-        + strokes_table_maker.get_buckets_length() * size_of::<usize>() // requires align 4, maintains align 4
-        + strings_table_maker.get_buckets_length() * size_of::<usize>() // requires align 4, maintains align 4
-        + strokes_table_maker.get_data_length() // requires align 1, maintains align 1
-        + strings_table_maker.get_data_length(); // requires align 1, maintains align 1
+    let usize_buffer_length = 2
+        + strokes_table_maker.get_buckets_length()
+        + strings_table_maker.get_buckets_length();
 
-    let mut new_memory_start = allocate_memory_buffer(memory_needed);
+    let u8_buffer_length = 4
+        + strokes_table_maker.get_data_length()
+        + strings_table_maker.get_data_length();
 
-    let offset_info;
-    let strokes_buckets;
-    let strings_buckets;
-    let strokes_data;
-    let strings_data;
+    let mut container = ContainerType::allocate(usize_buffer_length, u8_buffer_length);
+    let (mut usize_buffer, mut u8_buffer) = container.get_both_buffers_mut();
 
-    unsafe {
-        // previously, i made sure that the beginning of the page was
-        // aligned. this is a fair bit of work and it should not be
-        // necessary, tbh, so im leaving it out.
-        //
-        // im doing all of this in a single block, so that all of the
-        // intermediate values will go out of scope and get dropped
-        // cleanly when we are done here.
+    // store the length of the strokes table arrays, so we'll remember where the
+    // strings table arrays start
+    usize_buffer[0] = strokes_table_maker.get_buckets_length();
+    usize_buffer[1] = strokes_table_maker.get_data_length();
 
-        let mut offset = 0;
-        offset_info = &mut *(new_memory_start as *mut Header);
-        offset += size_of::<Header>();
-        new_memory_start = new_memory_start.offset(size_of::<Header>().try_into().unwrap());
+    // store the format version
+    // (use big endian so the order of the bytes is the same as in
+    // FORMAT_VERSION above)
+    u8_buffer[0..4].copy_from_slice(&u32::to_be_bytes(FORMAT_VERSION));
 
-        strokes_buckets = core::slice::from_raw_parts_mut(
-            new_memory_start as *mut usize,
-            strokes_table_maker.get_buckets_length()
-        );
+    let (strokes_buckets, strings_buckets) =
+        usize_buffer[2..]
+        .split_at_mut(strokes_table_maker.get_buckets_length());
 
-        offset_info.strokes_buckets = offset;
-        offset += strokes_table_maker.get_buckets_length() * size_of::<usize>();
-        new_memory_start = new_memory_start.offset((strokes_table_maker.get_buckets_length() * size_of::<usize>()).try_into().unwrap());
-
-        strings_buckets = core::slice::from_raw_parts_mut(
-            new_memory_start as *mut usize,
-            strings_table_maker.get_buckets_length()
-        );
-
-        offset_info.strings_buckets = offset;
-        offset += strings_table_maker.get_buckets_length() * size_of::<usize>();
-        new_memory_start = new_memory_start.offset((strings_table_maker.get_buckets_length() * size_of::<usize>()).try_into().unwrap());
-
-        strokes_data = core::slice::from_raw_parts_mut(
-            new_memory_start as *mut u8,
-            strokes_table_maker.get_data_length()
-        );
-
-        offset_info.strokes_data = offset;
-        offset += strokes_table_maker.get_data_length();
-        new_memory_start = new_memory_start.offset((strokes_table_maker.get_data_length()).try_into().unwrap());
-
-        strings_data = core::slice::from_raw_parts_mut(
-            new_memory_start as *mut u8,
-            strings_table_maker.get_data_length()
-        );
-
-        offset_info.strings_data = offset;
-        offset += strings_table_maker.get_data_length();
-        new_memory_start = new_memory_start.offset((strings_table_maker.get_data_length()).try_into().unwrap());
-
-        assert!(offset == memory_needed);
-
-        // whew
-    }
-
-    // store our offset_info
-    offset_info.version = FORMAT_VERSION;
-    offset_info.end = (*offset_info).strings_data + strings_data.len();
+    let (strokes_data, strings_data) = 
+        u8_buffer[4..]
+        .split_at_mut(strokes_table_maker.get_data_length());
 
     // make the hash tables!
-    println!("making strokes table");
+    //println!("making strokes table");
     let mut strokes_table = strokes_table_maker.make_hash_table(strokes_buckets, strokes_data);
-    println!("making strings table");
+    //println!("making strings table");
     let mut strings_table = strings_table_maker.make_hash_table(strings_buckets, strings_data);
 
     // write our values
@@ -426,7 +369,7 @@ pub fn load_json_internal(mut buffer: &mut [u8]) -> InternalResult<usize> {
         strings_table.set_value(translation_entry_handle, strokes_offset.try_into().unwrap());
     }
 
-    return Ok(new_memory_start as usize);
+    return Ok(container);
 }
 
 // rewrites a json string into a length-prefixed version, un-escaping simple
@@ -763,54 +706,21 @@ fn parse_stroke_fast(buffer: &[u8], pos: &mut usize) -> u32 {
     return stroke;
 }
 
-//fn query_internal(query: &[u8], hashmap: &[usize], definitions: &[u8]) -> InternalResult<()> {
-//
-//    let hash = wyhash(query, 1);
-//    let index = (hash as usize) % hashmap.len();
-//
-//    let bucket_offset = hashmap[index];
-//    // TODO: fix this. empty buckets are now marked by simply containing nothing,
-//    // which you can check by comparing them to the offset of the next one
-//    if bucket_offset == usize::max_value() {
-//        // no results
-//        return Ok(());
+//fn query_internal<F>(query: &[u8], hashmap: , yield_result: F) -> InternalResult<()>
+//    where F: FnMut(&[u8], &[u8])
+//{
+//    for strokes_offset in strings_table.get_values() {
+//        let strokes = hashtable::Entry(strokes_table.data, strokes_offset).key;
+//        yield_result(query, strokes);
 //    }
 //
-//    for definition in BucketEntryIterator::new(&definitions[bucket_offset..]) {
-//        
-//        let is_match = (definition.len() > query.len())
-//            && (definition[query.len()] == 0)
-//            && (&definition[0 .. query.len()] == query);
-//
-//        if is_match {
-//
-//            let string = &definition[0 .. query.len()];
-//
-//            let strokes_start = query.len() + 1;
-//            let mut stroke_pos = strokes_start;
-//
-//            // read strokes
-//            loop {
-//
-//                let stroke1 = definition[stroke_pos] as u32;
-//                let stroke2 = definition[stroke_pos+1] as u32;
-//                let stroke3 = definition[stroke_pos+2] as u32;
-//                stroke_pos += 3;
-//
-//                let stroke = stroke1 | (stroke2 << 8) | (stroke3 << 16);
-//                if (stroke >> 23) == 1 {
-//                    break;
-//                }
-//            }
-//            let strokes_end = stroke_pos;
-//            let strokes = &definition[strokes_start..strokes_end];
-//
 //            unsafe {
+//                //yield_result(string.as_ptr() as u32, string.len() as u32, strokes.as_ptr() as u32, (strokes_end - strokes_start) as u32);
 //                yield_result(string.as_ptr() as u32, string.len() as u32, strokes.as_ptr() as u32, (strokes_end - strokes_start) as u32);
 //            }
 //        }
 //    }
-//
+
 //    return Ok(());
 //}
 //
@@ -873,6 +783,6 @@ mod tests {
         let mut dictionary_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         dictionary_path.push("resources/test/stanmain.json");
         let mut json_dict = std::fs::read(dictionary_path).unwrap();
-        load_json_internal(&mut json_dict[..]);
+        //load_json_internal(&mut json_dict[..]);
     }
 }

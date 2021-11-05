@@ -8,7 +8,7 @@ use core::mem::size_of;
 use core::fmt::Write;
 use core::convert::TryInto;
 use core::borrow::Borrow;
-use query_engine::{self, InternalError};
+use query_engine::{self, InternalError, DataStructuresContainer};
 
 #[link(wasm_import_module = "env")]
 extern { fn logErr(message_offset: u32, message_length: u32, details_offset: u32, details_length: u32, line: u32); }
@@ -43,9 +43,85 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
     }
 }
 
-fn handle_loader_error(error: InternalError) -> usize {
+fn handle_loader_error(error: InternalError) -> ! {
     log_err_internal(error);
     panic!();
+}
+
+// Set up the allocation structure for the query engine
+// 
+struct Container {
+    // this memory will never be deallocated as long as this program runs
+    usize_buffer: &'static mut [usize],
+    u8_buffer: &'static mut [u8],
+}
+
+impl DataStructuresContainer for Container {
+
+    fn allocate (usize_buffer_length: usize, u8_buffer_length: usize) -> Container {
+
+        let memory_needed =
+            usize_buffer_length * size_of::<usize>() // requires align 4, maintains align 4
+            + u8_buffer_length; // requires align 1, maintains align 1
+
+        let wasm_page_size = 65536;
+        // this is just a rounding-up division for ints.
+        let number_of_new_pages = (memory_needed - 1) / wasm_page_size + 1;
+
+        // allocate new memory
+        let previous_mem_size_pages = core::arch::wasm32::memory_grow(0, number_of_new_pages);
+        let new_memory_start = previous_mem_size_pages * wasm_page_size;
+
+        unsafe {
+            // previously, i made sure that the beginning of the page was
+            // aligned. this is a fair bit of work and it should not be
+            // necessary, tbh, so im leaving it out.
+
+            let mut offset = 0;
+
+            let usize_buffer = core::slice::from_raw_parts_mut(
+                (new_memory_start + offset) as *mut usize,
+                usize_buffer_length
+            );
+
+            offset += usize_buffer_length * size_of::<usize>();
+
+            let u8_buffer = core::slice::from_raw_parts_mut(
+                (new_memory_start + offset) as *mut u8,
+                u8_buffer_length
+            );
+
+            offset += u8_buffer_length;
+
+            // whew
+            assert_eq!(offset, memory_needed);
+
+            Container {
+                usize_buffer: usize_buffer,
+                u8_buffer: u8_buffer
+            }
+        }
+    }
+
+    fn get_usize_buffer(&self) -> &[usize] {
+        &self.usize_buffer[..]
+    }
+
+    fn get_usize_buffer_mut(&mut self) -> &mut [usize] {
+        &mut self.usize_buffer[..]
+    }
+
+    fn get_u8_buffer(&self) -> &[u8] {
+        &self.u8_buffer[..]
+    }
+
+    fn get_u8_buffer_mut(&mut self) -> &mut [u8] {
+        &mut self.u8_buffer[..]
+    }
+
+    fn get_both_buffers_mut(&mut self) -> (&mut [usize], &mut [u8]) {
+        (&mut self.usize_buffer[..], &mut self.u8_buffer[..])
+    }
 }
 
 #[no_mangle]
@@ -54,7 +130,11 @@ pub unsafe extern fn load_json(offset: u32, length: u32) -> u32 {
         offset as *mut u8,
         length as usize
     );
-    return query_engine::load_json_internal(buffer).unwrap_or_else(handle_loader_error) as u32;
+    let container = query_engine::load_json_internal::<Container>(buffer).map_err(handle_loader_error).unwrap();
+
+    // the usize array comes first
+    // TODO: actually store the length in there
+    return container.usize_buffer.as_ptr() as u32;
 }
 
 //#[link(wasm_import_module = "env")]
