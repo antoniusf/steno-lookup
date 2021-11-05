@@ -104,19 +104,19 @@ impl DataStructuresContainer for Container {
     }
 
     fn get_usize_buffer(&self) -> &[usize] {
-        &self.usize_buffer[..]
+        &self.usize_buffer
     }
 
     fn get_usize_buffer_mut(&mut self) -> &mut [usize] {
-        &mut self.usize_buffer[..]
+        &mut self.usize_buffer
     }
 
     fn get_u8_buffer(&self) -> &[u8] {
-        &self.u8_buffer[..]
+        &self.u8_buffer
     }
 
     fn get_u8_buffer_mut(&mut self) -> &mut [u8] {
-        &mut self.u8_buffer[..]
+        &mut self.u8_buffer
     }
 
     fn get_both_buffers_mut(&mut self) -> (&mut [usize], &mut [u8]) {
