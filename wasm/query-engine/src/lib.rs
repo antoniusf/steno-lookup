@@ -778,11 +778,46 @@ mod tests {
         pos = 0;
     }
 
+    struct Container {
+        usize_buffer: Vec<usize>,
+        u8_buffer: Vec<u8>
+    }
+
+    impl DataStructuresContainer for Container {
+
+        fn allocate(usize_buffer_len: usize, u8_buffer_len: usize) -> Container {
+            Container {
+                usize_buffer: vec![0usize; usize_buffer_len],
+                u8_buffer: vec![0u8; u8_buffer_len]
+            }
+        }
+
+        fn get_usize_buffer(&self) -> &[usize] {
+            &self.usize_buffer
+        }
+
+        fn get_usize_buffer_mut(&mut self) -> &mut [usize] {
+            &mut self.usize_buffer
+        }
+
+        fn get_u8_buffer(&self) -> &[u8] {
+            &self.u8_buffer
+        }
+
+        fn get_u8_buffer_mut(&mut self) -> &mut [u8] {
+            &mut self.u8_buffer
+        }
+
+        fn get_both_buffers_mut(&mut self) -> (&mut [usize], &mut [u8]) {
+            (&mut self.usize_buffer[..], &mut self.u8_buffer[..])
+        }
+    }
+
     #[test]
     fn test_loader() {
         let mut dictionary_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         dictionary_path.push("resources/test/stanmain.json");
         let mut json_dict = std::fs::read(dictionary_path).unwrap();
-        //load_json_internal(&mut json_dict[..]);
+        load_json_internal::<Container>(&mut json_dict[..]);
     }
 }
