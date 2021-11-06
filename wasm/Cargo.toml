@@ -3,3 +3,7 @@ members = [
     "wasm-module",
     "query-engine",
 ]
+
+[profile.release]
+lto = true
+opt-level = 's'

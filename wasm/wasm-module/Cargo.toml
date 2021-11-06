@@ -11,7 +11,3 @@ crate-type = ["cdylib"]
 
 [dependencies]
 query-engine = { path = "../query-engine" }
-
-[profile.release]
-lto = true
-opt-level = 's'
