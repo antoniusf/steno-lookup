@@ -345,9 +345,9 @@ pub fn load_json_internal<ContainerType>(mut buffer: &mut [u8]) -> InternalResul
         .split_at_mut(strokes_table_maker.get_data_length());
 
     // make the hash tables!
-    //println!("making strokes table");
+    println!("making strokes table");
     let mut strokes_table = strokes_table_maker.make_hash_table(strokes_buckets, strokes_data);
-    //println!("making strings table");
+    println!("making strings table");
     let mut strings_table = strings_table_maker.make_hash_table(strings_buckets, strings_data);
 
     // write our values
@@ -863,7 +863,30 @@ mod tests {
         }
     }
 
-    //fn format_stroke(stroke: u32)
+    const STENO_ORDER: &str = "#STKPWHRAO*EUFRPBLGTSDZ";
+
+    fn format_stroke(stroke: u32) -> String {
+        STENO_ORDER.chars().enumerate()
+            .filter(|(i, val)| (stroke & (1 << i)) != 0)
+            .map(|(i, val)| val)
+            .collect()
+    }
+
+    fn format_strokes(strokes: &[u8]) -> String {
+        strokes.chunks_exact(3).map(|stroke_bytes| {
+            format_stroke(
+                   (stroke_bytes[0] as u32)
+                | ((stroke_bytes[1] as u32) << 8)
+                | ((stroke_bytes[2] as u32) << 16)
+            )
+        }).fold(String::new(), |mut accumulator, stroke| {
+            if accumulator.len() > 0 {
+                accumulator.push_str("/");
+            }
+            accumulator.push_str(&stroke);
+            accumulator
+        })
+    }
 
     #[test]
     fn test_loader() {
@@ -872,6 +895,12 @@ mod tests {
         let mut json_dict = std::fs::read(dictionary_path).unwrap();
         let mut container = load_json_internal::<Container>(&mut json_dict[..]).unwrap();
 
-        query_internal(b"hello", &mut container, |a, b| {println!("got result: {:?}, {:?}", a, b);});
+        println!("hashtable constructed!");
+
+        query_internal(b"implicitly", &mut container, |a, b| {
+            println!("got result: {}, {}",
+                     std::str::from_utf8(a).unwrap_or("<invalid utf-8>"),
+                     format_strokes(b));
+        });
     }
 }
