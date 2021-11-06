@@ -7,7 +7,6 @@
 // TODO temporary!!
 #![allow(dead_code)]
 
-use core::mem::size_of;
 use core::fmt::Write;
 use core::convert::TryInto;
 use core::borrow::Borrow;
@@ -300,7 +299,7 @@ pub fn load_json_internal<ContainerType>(mut buffer: &mut [u8]) -> InternalResul
         if *byte == b'}' {
             // reached file end
             //#[allow(unused_assignments)]
-            read_pos += 1;
+            //read_pos += 1;
             break;
         }
         expect_char(buffer, &mut read_pos, b',')?;
@@ -327,7 +326,7 @@ pub fn load_json_internal<ContainerType>(mut buffer: &mut [u8]) -> InternalResul
         + strings_table_maker.get_data_length();
 
     let mut container = ContainerType::allocate(usize_buffer_length, u8_buffer_length);
-    let (mut usize_buffer, mut u8_buffer) = container.get_both_buffers_mut();
+    let (usize_buffer, u8_buffer) = container.get_both_buffers_mut();
 
     // store the length of the strokes table arrays, so we'll remember where the
     // strings table arrays start
@@ -348,10 +347,12 @@ pub fn load_json_internal<ContainerType>(mut buffer: &mut [u8]) -> InternalResul
         .split_at_mut(strokes_table_maker.get_data_length());
 
     // make the hash tables!
-    println!("making strokes table");
+    //println!("making strokes table");
     let mut strokes_table = strokes_table_maker.make_hash_table(strokes_buckets, strokes_data);
-    println!("making strings table");
+    //println!("making strings table");
     let mut strings_table = strings_table_maker.make_hash_table(strings_buckets, strings_data);
+
+    //println!("writing values");
 
     // write our values
     for (strokes, translation) in strokes_iterator.zip(strings_iterator) {
@@ -716,7 +717,7 @@ fn parse_stroke_fast(buffer: &[u8], pos: &mut usize) -> u32 {
 
 fn get_hashtables_from_container(container: &mut impl DataStructuresContainer) -> InternalResult<(HashTable, HashTable)> {
 
-    let (mut usize_buffer, mut u8_buffer) = container.get_both_buffers_mut();
+    let (usize_buffer, u8_buffer) = container.get_both_buffers_mut();
 
     let format_version = u32::from_be_bytes(u8_buffer[0..4].try_into().unwrap());
     // TODO: we might actually want to do the format checking in the platform
@@ -733,7 +734,7 @@ fn get_hashtables_from_container(container: &mut impl DataStructuresContainer) -
 
     let (strokes_buckets, strings_buckets) =
         usize_buffer[2..]
-        .split_at_mut(strokes_buckets_length);
+        .split_at(strokes_buckets_length);
 
     let (strokes_data, strings_data) = 
         u8_buffer[4..]
@@ -756,7 +757,6 @@ fn query_internal<F>(query: &[u8], container: &mut impl DataStructuresContainer,
 {
     let (strokes_table, strings_table) = get_hashtables_from_container(container)?;
     for strokes_offset in strings_table.get_values(query) {
-        println!("got strokes offset: {}", strokes_offset);
         let strokes = hashtable::Entry::new(strokes_table.data, strokes_offset as usize).key;
         yield_result(query, strokes);
     }
@@ -792,7 +792,6 @@ fn find_strokes_internal<F>(query: &[u8], container: &mut impl DataStructuresCon
     let parsed_query = &parsed_query_buffer[..parsed_len];
 
     for strings_offset in strokes_table.get_values(parsed_query) {
-        println!("got strings offset: {}", strings_offset);
         let translation = hashtable::Entry::new(strings_table.data, strings_offset as usize).key;
         yield_result(translation, parsed_query);
     }
@@ -816,7 +815,6 @@ mod tests {
         assert_eq!(parse_stroke_fast(b"#AO/", &mut pos), 769);
         pos = 0;
         assert_eq!(parse_stroke_fast(b"50/", &mut pos), 769);
-        pos = 0;
     }
 
     struct Container {

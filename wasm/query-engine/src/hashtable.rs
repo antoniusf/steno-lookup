@@ -428,7 +428,7 @@ mod tests {
             data: b"asdf bla hello world",
             offset: 0
         };
-        let mut hash_table_maker = HashTableMaker::initialize(test_iterator.clone());
+        let hash_table_maker = HashTableMaker::initialize(test_iterator.clone());
         let buckets_length = hash_table_maker.get_buckets_length();
         let data_length = hash_table_maker.get_data_length();
 
