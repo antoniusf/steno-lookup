@@ -225,8 +225,10 @@ export async function loadJson (json) {
     console.log(`after wasm (took ${performance.now() - start}ms)`);
 
     // this matches the Header struct in lib.rs
-    const lengths = new Uint32Array(wasm.exports.memory.buffer, info_ptr, 5);
-    const data_length = lengths[4];
+    const lengths = new Uint32Array(wasm.exports.memory.buffer, info_ptr, 3);
+    const usize_buffer_length = lengths[1];
+    const u8_buffer_length = lengths[2];
+    const data_length = usize_buffer_length*4 + u8_buffer_length;
 
     console.log(`data length: ${data_length}`);
 
