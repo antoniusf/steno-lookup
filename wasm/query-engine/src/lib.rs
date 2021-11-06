@@ -11,8 +11,9 @@ use core::borrow::Borrow;
 
 mod hashtable;
 
-use hashtable::HashTableMaker;
+use hashtable::{HashTableMaker, HashTable};
 
+#[cfg_attr(test, derive(Debug))]
 pub struct InternalError<'a> {
     // message is the part of the error that's meant to be
     // simple, so everyone can understand it.
@@ -358,7 +359,7 @@ pub fn load_json_internal<ContainerType>(mut buffer: &mut [u8]) -> InternalResul
             .expect("Populating hash table: no fitting entry found!");
 
         let translation_offset = translation_entry.get_offset();
-        let strokes_offset = translation_entry.get_offset();
+        let strokes_offset = strokes_entry.get_offset();
 
         // we have to do this before the set_value call because otherwise rustc
         // can't figure out the borrows
@@ -706,21 +707,63 @@ fn parse_stroke_fast(buffer: &[u8], pos: &mut usize) -> u32 {
     return stroke;
 }
 
-//fn query_internal<F>(query: &[u8], hashmap: , yield_result: F) -> InternalResult<()>
-//    where F: FnMut(&[u8], &[u8])
-//{
-//    for strokes_offset in strings_table.get_values() {
-//        let strokes = hashtable::Entry(strokes_table.data, strokes_offset).key;
-//        yield_result(query, strokes);
-//    }
-//
+fn get_hashtables_from_container(container: &mut impl DataStructuresContainer) -> InternalResult<(HashTable, HashTable)> {
+
+    let (mut usize_buffer, mut u8_buffer) = container.get_both_buffers_mut();
+
+    let format_version = u32::from_be_bytes(u8_buffer[0..4].try_into().unwrap());
+    // TODO: we might actually want to do the format checking in the platform
+    // layer. reason being that the current platform setup (one usize array
+    // and one u8 array) might change too, and so we need version checking
+    // for that anyways.
+
+    if format_version != FORMAT_VERSION {
+        return Err(error!(b"Dictionary format mismatch! Please remove the current dictionary and load it back in to store it in the current format.", b""));
+    }
+
+    let strokes_buckets_length = usize_buffer[0];
+    let strokes_data_length = usize_buffer[1];
+
+    let (strokes_buckets, strings_buckets) =
+        usize_buffer[2..]
+        .split_at_mut(strokes_buckets_length);
+
+    let (strokes_data, strings_data) = 
+        u8_buffer[4..]
+        .split_at_mut(strokes_data_length);
+
+    Ok((
+        HashTable {
+            buckets: strokes_buckets,
+            data: strokes_data
+        },
+        HashTable {
+            buckets: strings_buckets,
+            data: strings_data
+        }
+    ))
+}
+
+fn query_internal<F>(query: &[u8], container: &mut impl DataStructuresContainer, mut yield_result: F) -> InternalResult<()>
+    where F: FnMut(&[u8], &[u8])
+{
+    let (strokes_table, strings_table) = get_hashtables_from_container(container)?;
+    for strokes_offset in strings_table.get_values(query) {
+        println!("got strokes offset: {}", strokes_offset);
+        let strokes = hashtable::Entry::new(strokes_table.data, strokes_offset as usize).key;
+        yield_result(query, strokes);
+    }
+
+    Ok(())
+}
+
 //            unsafe {
 //                //yield_result(string.as_ptr() as u32, string.len() as u32, strokes.as_ptr() as u32, (strokes_end - strokes_start) as u32);
 //                yield_result(string.as_ptr() as u32, string.len() as u32, strokes.as_ptr() as u32, (strokes_end - strokes_start) as u32);
 //            }
 //        }
 //    }
-
+//
 //    return Ok(());
 //}
 //
@@ -786,6 +829,9 @@ mod tests {
     impl DataStructuresContainer for Container {
 
         fn allocate(usize_buffer_len: usize, u8_buffer_len: usize) -> Container {
+            println!("usize buffer len: {}", usize_buffer_len);
+            println!("u8 buffer len: {}", u8_buffer_len);
+            println!("total memory usage: {} kiB", (usize_buffer_len * 4 + u8_buffer_len) / 1024);
             Container {
                 usize_buffer: vec![0usize; usize_buffer_len],
                 u8_buffer: vec![0u8; u8_buffer_len]
@@ -813,11 +859,15 @@ mod tests {
         }
     }
 
+    //fn format_stroke(stroke: u32)
+
     #[test]
     fn test_loader() {
         let mut dictionary_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         dictionary_path.push("resources/test/stanmain.json");
         let mut json_dict = std::fs::read(dictionary_path).unwrap();
-        load_json_internal::<Container>(&mut json_dict[..]);
+        let mut container = load_json_internal::<Container>(&mut json_dict[..]).unwrap();
+
+        query_internal(b"hello", &mut container, |a, b| {println!("got result: {:?}, {:?}", a, b);});
     }
 }

@@ -32,7 +32,7 @@ impl<'a> Entry<'a> {
         }
     }
 
-    fn new(data: &'a [u8], offset: usize) -> Entry<'a> {
+    pub fn new(data: &'a [u8], offset: usize) -> Entry<'a> {
         let length = u16::from_ne_bytes(
             data[offset .. offset + 2].try_into().unwrap())
             as usize;
@@ -312,8 +312,8 @@ fn get_bucket_index_from_iterator(iterator: impl Iterator<Item = impl Borrow<u8>
 // keys are always (&)[u8]
 // values are always u32
 pub struct HashTable<'a> {
-    buckets: &'a [usize],
-    data: &'a mut [u8]
+    pub buckets: &'a [usize],
+    pub data: &'a mut [u8]
 }
 
 impl<'a> HashTable<'a> {
