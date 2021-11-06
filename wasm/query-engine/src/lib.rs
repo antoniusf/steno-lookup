@@ -229,8 +229,6 @@ pub trait DataStructuresContainer {
     fn get_both_buffers_mut(&mut self) -> (&mut [usize], &mut [u8]);
 }
 
-const FORMAT_VERSION: u32 = 0x00_01_00_03;
-
 // loads a json array into our custom memory format.
 pub fn load_json_internal<ContainerType>(mut buffer: &mut [u8]) -> InternalResult<ContainerType>
     where ContainerType: DataStructuresContainer
@@ -322,7 +320,7 @@ pub fn load_json_internal<ContainerType>(mut buffer: &mut [u8]) -> InternalResul
         + strokes_table_maker.get_buckets_length()
         + strings_table_maker.get_buckets_length();
 
-    let u8_buffer_length = 4
+    let u8_buffer_length = 0
         + strokes_table_maker.get_data_length()
         + strings_table_maker.get_data_length();
 
@@ -334,17 +332,12 @@ pub fn load_json_internal<ContainerType>(mut buffer: &mut [u8]) -> InternalResul
     usize_buffer[0] = strokes_table_maker.get_buckets_length();
     usize_buffer[1] = strokes_table_maker.get_data_length();
 
-    // store the format version
-    // (use big endian so the order of the bytes is the same as in
-    // FORMAT_VERSION above)
-    u8_buffer[0..4].copy_from_slice(&u32::to_be_bytes(FORMAT_VERSION));
-
     let (strokes_buckets, strings_buckets) =
         usize_buffer[2..]
         .split_at_mut(strokes_table_maker.get_buckets_length());
 
     let (strokes_data, strings_data) = 
-        u8_buffer[4..]
+        u8_buffer
         .split_at_mut(strokes_table_maker.get_data_length());
 
     // make the hash tables!
@@ -720,16 +713,6 @@ fn get_hashtables_from_container(container: &mut impl DataStructuresContainer) -
 
     let (usize_buffer, u8_buffer) = container.get_both_buffers_mut();
 
-    let format_version = u32::from_be_bytes(u8_buffer[0..4].try_into().unwrap());
-    // TODO: we might actually want to do the format checking in the platform
-    // layer. reason being that the current platform setup (one usize array
-    // and one u8 array) might change too, and so we need version checking
-    // for that anyways.
-
-    if format_version != FORMAT_VERSION {
-        return Err(error!(b"Dictionary format mismatch! Please remove the current dictionary and load it back in to store it in the current format.", b""));
-    }
-
     let strokes_buckets_length = usize_buffer[0];
     let strokes_data_length = usize_buffer[1];
 
@@ -738,7 +721,7 @@ fn get_hashtables_from_container(container: &mut impl DataStructuresContainer) -
         .split_at(strokes_buckets_length);
 
     let (strokes_data, strings_data) = 
-        u8_buffer[4..]
+        u8_buffer
         .split_at_mut(strokes_data_length);
 
     Ok((
