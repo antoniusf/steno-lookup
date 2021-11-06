@@ -46,7 +46,7 @@ fn handle_loader_error(error: InternalError) -> ! {
     panic!();
 }
 
-const FORMAT_VERSION: u32 = 0x00_01_00_03;
+const FORMAT_VERSION: u32 = 0x00_02_00_00;
 
 #[repr(packed(4))]
 struct Header {
