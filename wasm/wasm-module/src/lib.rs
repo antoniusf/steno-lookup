@@ -48,10 +48,19 @@ fn handle_loader_error(error: InternalError) -> ! {
     panic!();
 }
 
+const FORMAT_VERSION: u32 = 0x00_01_00_03;
+
+#[repr(packed(4))]
+struct Header {
+    version: u32,
+    u8_buffer_offset: usize,
+}
+
 // Set up the allocation structure for the query engine
 // 
 struct Container {
     // this memory will never be deallocated as long as this program runs
+    header: &'static Header,
     usize_buffer: &'static mut [usize],
     u8_buffer: &'static mut [u8],
 }
@@ -61,7 +70,8 @@ impl DataStructuresContainer for Container {
     fn allocate (usize_buffer_length: usize, u8_buffer_length: usize) -> Container {
 
         let memory_needed =
-            usize_buffer_length * size_of::<usize>() // requires align 4, maintains align 4
+            size_of::<Header>()
+            + usize_buffer_length * size_of::<usize>() // requires align 4, maintains align 4
             + u8_buffer_length; // requires align 1, maintains align 1
 
         let wasm_page_size = 65536;
@@ -78,6 +88,10 @@ impl DataStructuresContainer for Container {
             // necessary, tbh, so im leaving it out.
 
             let mut offset = 0;
+
+            let header = &mut *((new_memory_start + offset) as *mut Header);
+
+            offset += size_of::<Header>();
 
             let usize_buffer = core::slice::from_raw_parts_mut(
                 (new_memory_start + offset) as *mut usize,
@@ -96,7 +110,11 @@ impl DataStructuresContainer for Container {
             // whew
             assert_eq!(offset, memory_needed);
 
+            header.version = FORMAT_VERSION;
+            header.u8_buffer_offset = usize_buffer_length * size_of::<usize>();
+
             Container {
+                header: header,
                 usize_buffer: usize_buffer,
                 u8_buffer: u8_buffer
             }
@@ -132,17 +150,15 @@ pub unsafe extern fn load_json(offset: u32, length: u32) -> u32 {
     );
     let container = query_engine::load_json_internal::<Container>(buffer).map_err(handle_loader_error).unwrap();
 
-    // the usize array comes first
-    // TODO: actually store the length in there
-    return container.usize_buffer.as_ptr() as u32;
+    return (container.header as *const Header) as u32;
 }
 
-//#[link(wasm_import_module = "env")]
-//extern { fn yield_result(string_offset: u32, string_length: u32, stroke_offset: u32, stroke_length: u32); }
-//
-//// if find_stroke == 0, performs a normal lookup using the query term starting at the given offset
-////                      with the given length
-//// if find_stroke == 1, performs a stroke lookup by interpreting the offset field as a stroke. length is unused.
+#[link(wasm_import_module = "env")]
+extern { fn yield_result(string_offset: u32, string_length: u32, stroke_offset: u32, stroke_length: u32); }
+
+// if find_stroke == 0, performs a normal lookup using the query term starting at the given offset
+//                      with the given length
+// if find_stroke == 1, performs a stroke lookup by interpreting the offset field as a stroke. length is unused.
 //#[no_mangle]
 //pub unsafe extern fn query(offset: u32, length: u32, data_offset: usize, find_stroke: u8) {
 //
