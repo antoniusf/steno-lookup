@@ -46,7 +46,7 @@
 	error_msg = undefined;
 	results = undefined;
 	try {
-	    results = dictionary.find_stroke(stroke);
+	    results = dictionary.find_strokes(current_text);
 	}
 	catch (e) {
 	    results = undefined;

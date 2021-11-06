@@ -156,14 +156,21 @@ function prepare_instance_for_querying(instance_info, dictionary_data) {
 	return results.slice();
     }
 
-    function find_stroke(stroke) {
+    function find_strokes(strokes) {
+
+	const start = performance.now();
+
+	// limit length to 100 bytes, since that's how much is reserved
+	const encoded_query = text_encoder.encode(strokes).subarray(0, 100);
+
+	let wasm_query = new Uint8Array(instance.exports.memory.buffer, query_start, encoded_query.length);
+	wasm_query.set(encoded_query);
 
 	// clear results in place
 	// this is necessary since it is captured by the yield_results function, so we can't reassign
 	results.splice(0, results.length);
-	const start = performance.now();
 	try {
-	    instance.exports.query(stroke, 0,
+	    instance.exports.query(query_start, encoded_query.length,
 				data_start,
 				1);
 	}
@@ -182,7 +189,7 @@ function prepare_instance_for_querying(instance_info, dictionary_data) {
     }
 
     // return wasm_data as well, so that the caller can store it if they want
-    return { lookup: lookup, find_stroke: find_stroke, data: wasm_data };
+    return { lookup: lookup, find_strokes: find_strokes, data: wasm_data };
 }
 
 export async function loadJson (json) {
