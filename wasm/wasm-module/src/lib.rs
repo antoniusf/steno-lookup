@@ -8,7 +8,7 @@ use core::mem::size_of;
 //use core::fmt::Write;
 //use core::convert::TryInto;
 //use core::borrow::Borrow;
-use query_engine::{self, InternalError, DataStructuresContainer};
+use query_engine::{self, error, InternalError, DataStructuresContainer};
 
 #[link(wasm_import_module = "env")]
 extern { fn logErr(message_offset: u32, message_length: u32, details_offset: u32, details_length: u32, line: u32); }
@@ -51,7 +51,8 @@ const FORMAT_VERSION: u32 = 0x00_01_00_03;
 #[repr(packed(4))]
 struct Header {
     version: u32,
-    u8_buffer_offset: usize,
+    usize_buffer_length: usize,
+    u8_buffer_length: usize,
 }
 
 // Set up the allocation structure for the query engine
@@ -109,7 +110,8 @@ impl DataStructuresContainer for Container {
             assert_eq!(offset, memory_needed);
 
             header.version = FORMAT_VERSION;
-            header.u8_buffer_offset = usize_buffer_length * size_of::<usize>();
+            header.usize_buffer_length = usize_buffer_length;
+            header.u8_buffer_length = u8_buffer_length;
 
             Container {
                 header: header,
@@ -154,51 +156,56 @@ pub unsafe extern fn load_json(offset: u32, length: u32) -> u32 {
 #[link(wasm_import_module = "env")]
 extern { fn yield_result(string_offset: u32, string_length: u32, stroke_offset: u32, stroke_length: u32); }
 
+fn yield_result_internal(strokes: &[u8], translation: &[u8]) {
+    unsafe {
+        yield_result(
+            translation.as_ptr() as u32, translation.len() as u32,
+            strokes.as_ptr() as u32, strokes.len() as u32);
+    }
+}
+
 // if find_stroke == 0, performs a normal lookup using the query term starting at the given offset
 //                      with the given length
 // if find_stroke == 1, performs a stroke lookup by interpreting the offset field as a stroke. length is unused.
-//#[no_mangle]
-//pub unsafe extern fn query(offset: u32, length: u32, data_offset: usize, find_stroke: u8) {
-//
-//    let offset_info = &*(data_offset as *const Header);
-//    if offset_info.version != FORMAT_VERSION {
-//        log_err_internal(error!(b"Dictionary format mismatch! Please remove the current dictionary and load it back in to store it in the current format.", b""));
-//        panic!();
-//    }
-//    let hashmap_size = offset_info.stroke_index - offset_info.hash_table;
-//    let hashmap = core::slice::from_raw_parts(
-//        (offset_info.hash_table + data_offset) as *const usize,
-//        hashmap_size / size_of::<usize>()
-//    );
-//    let stroke_prefix_lookup = core::slice::from_raw_parts(
-//        (offset_info.stroke_index + data_offset) as *const usize,
-//        257
-//    );
-//    let stroke_prefix_lookup_size = 257 * size_of::<usize>();
-//
-//    let stroke_subindices_offset = offset_info.stroke_index + stroke_prefix_lookup_size;
-//    let stroke_subindices_size = offset_info.definitions - stroke_subindices_offset;
-//    
-//    let stroke_subindices = core::slice::from_raw_parts(
-//        (stroke_subindices_offset + data_offset) as *const StrokeIndexEntry,
-//        stroke_subindices_size / size_of::<StrokeIndexEntry>()
-//    );
-//
-//    let definitions_size = offset_info.end - offset_info.definitions;
-//    let definitions = core::slice::from_raw_parts(
-//        (offset_info.definitions + data_offset) as *const u8,
-//        definitions_size
-//    );
-//
-//    if find_stroke == 0 {
-//        let query = core::slice::from_raw_parts(
-//            offset as *const u8,
-//            length as usize
-//        );
-//        query_internal(query, hashmap, definitions).unwrap_or_else(log_err_internal);
-//    }
-//    else {
-//        let query_stroke = offset;
-//        find_stroke_internal(query_stroke, stroke_prefix_lookup, stroke_subindices, definitions).unwrap_or_else(log_err_internal);
-//    }
-//}
+#[no_mangle]
+pub unsafe extern fn query(offset: u32, length: u32, data_offset: usize, find_stroke: u8) {
+
+    let offset_info = &*(data_offset as *const Header);
+
+    if offset_info.version != FORMAT_VERSION {
+        log_err_internal(error!(b"Dictionary format mismatch! Please remove the current dictionary and load it back in to store it in the current format.", b""));
+        panic!();
+    }
+
+    let usize_buffer_start = data_offset + size_of::<Header>();
+
+    let u8_buffer_start = usize_buffer_start + offset_info.usize_buffer_length * size_of::<usize>();
+
+    let usize_buffer = core::slice::from_raw_parts_mut(
+        usize_buffer_start as *mut usize,
+        offset_info.usize_buffer_length
+    );
+
+    let u8_buffer = core::slice::from_raw_parts_mut(
+        u8_buffer_start as *mut u8,
+        offset_info.u8_buffer_length
+    );
+
+    let mut container = Container {
+        header: offset_info,
+        usize_buffer: usize_buffer,
+        u8_buffer: u8_buffer
+    };
+
+    let query = core::slice::from_raw_parts(
+        offset as *const u8,
+        length as usize
+    );
+
+    if find_stroke == 0 {
+        query_engine::query_internal(query, &mut container, yield_result_internal).unwrap_or_else(log_err_internal);
+    }
+    else {
+        query_engine::find_strokes_internal(query, &mut container, yield_result_internal).unwrap_or_else(log_err_internal);
+    }
+}

@@ -28,6 +28,7 @@ pub struct InternalError<'a> {
 
 type InternalResult<T> = Result<T, InternalError<'static>>;
 
+#[macro_export]
 macro_rules! error {
     ($message:expr, $details:expr) => {
         InternalError {
@@ -752,7 +753,7 @@ fn get_hashtables_from_container(container: &mut impl DataStructuresContainer) -
     ))
 }
 
-fn query_internal<F>(query: &[u8], container: &mut impl DataStructuresContainer, mut yield_result: F) -> InternalResult<()>
+pub fn query_internal<F>(query: &[u8], container: &mut impl DataStructuresContainer, mut yield_result: F) -> InternalResult<()>
     where F: FnMut(&[u8], &[u8])
 {
     let (strokes_table, strings_table) = get_hashtables_from_container(container)?;
@@ -780,7 +781,7 @@ fn parse_strokes_query(query: &[u8], parsed_strokes_buffer: &mut [u8]) -> Intern
     return Ok(pos);
 }
 
-fn find_strokes_internal<F>(query: &[u8], container: &mut impl DataStructuresContainer, mut yield_result: F) -> InternalResult<()>
+pub fn find_strokes_internal<F>(query: &[u8], container: &mut impl DataStructuresContainer, mut yield_result: F) -> InternalResult<()>
     where F: FnMut(&[u8], &[u8])
 {
     let (strokes_table, strings_table) = get_hashtables_from_container(container)?;
