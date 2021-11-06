@@ -174,7 +174,8 @@ impl<'a> Iterator for AllStrokesIterator<'a> {
 struct ParseStrokesIterator<'a> {
     raw_strokes_data: &'a [u8],
     read_index: usize,
-    current_stroke: u32
+    current_stroke: u32,
+    bytes_left_in_current_stroke: usize,
 }
 
 impl<'a> ParseStrokesIterator<'a> {
@@ -182,7 +183,8 @@ impl<'a> ParseStrokesIterator<'a> {
         ParseStrokesIterator {
             raw_strokes_data,
             read_index: 0,
-            current_stroke: 0
+            current_stroke: 0,
+            bytes_left_in_current_stroke: 0,
         }
     }
 }
@@ -191,10 +193,11 @@ impl<'a> Iterator for ParseStrokesIterator<'a> {
     type Item = u8;
 
     fn next(&mut self) -> Option<u8> {
-        if self.current_stroke == 0 {
+        if self.bytes_left_in_current_stroke == 0 {
             if self.read_index < self.raw_strokes_data.len() {
                 let stroke = parse_stroke_fast(self.raw_strokes_data, &mut self.read_index);
                 self.current_stroke = stroke >> 8;
+                self.bytes_left_in_current_stroke = 2;
 
                 Some(stroke as u8)
             }
@@ -202,9 +205,10 @@ impl<'a> Iterator for ParseStrokesIterator<'a> {
                 None
             }
         }
-        else { // self.current_stroke != 0
+        else { // self.bytes_left_in_current_stroke != 0
             let stroke = self.current_stroke;
             self.current_stroke >>= 8;
+            self.bytes_left_in_current_stroke -= 1;
 
             Some(stroke as u8)
         }
