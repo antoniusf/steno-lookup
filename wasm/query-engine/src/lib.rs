@@ -859,8 +859,14 @@ mod tests {
 
     fn format_stroke(stroke: u32) -> String {
         STENO_ORDER.chars().enumerate()
-            .filter(|(i, _val)| (stroke & (1 << i)) != 0)
-            .map(|(_i, val)| val)
+            .filter_map(|(i, val)| {
+                if (stroke & (1 << i)) != 0 {
+                    Some(val)
+                }
+                else {
+                    None
+                }
+            })
             .collect()
     }
 
