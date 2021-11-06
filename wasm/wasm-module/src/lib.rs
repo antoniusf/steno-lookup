@@ -5,9 +5,9 @@
 #![no_std]
 
 use core::mem::size_of;
-use core::fmt::Write;
-use core::convert::TryInto;
-use core::borrow::Borrow;
+//use core::fmt::Write;
+//use core::convert::TryInto;
+//use core::borrow::Borrow;
 use query_engine::{self, InternalError, DataStructuresContainer};
 
 #[link(wasm_import_module = "env")]
@@ -38,9 +38,7 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
     //     details: b"".as_ref(),
     //     line: info.location().map_or(0, |loc| loc.line())
     // });
-    unsafe {
-        core::arch::wasm32::unreachable();
-    }
+    core::arch::wasm32::unreachable();
 }
 
 fn handle_loader_error(error: InternalError) -> ! {
