@@ -758,7 +758,7 @@ fn query_internal<F>(query: &[u8], container: &mut impl DataStructuresContainer,
     let (strokes_table, strings_table) = get_hashtables_from_container(container)?;
     for strokes_offset in strings_table.get_values(query) {
         let strokes = hashtable::Entry::new(strokes_table.data, strokes_offset as usize).key;
-        yield_result(query, strokes);
+        yield_result(strokes, query);
     }
 
     Ok(())
@@ -793,7 +793,7 @@ fn find_strokes_internal<F>(query: &[u8], container: &mut impl DataStructuresCon
 
     for strings_offset in strokes_table.get_values(parsed_query) {
         let translation = hashtable::Entry::new(strings_table.data, strings_offset as usize).key;
-        yield_result(translation, parsed_query);
+        yield_result(parsed_query, translation);
     }
 
     return Ok(());
@@ -889,16 +889,16 @@ mod tests {
 
         println!("hashtable constructed!");
 
-        query_internal(b"implicitly", &mut container, |a, b| {
+        query_internal(b"implicitly", &mut container, |strokes, translation| {
             println!("got result: {}, {}",
-                     std::str::from_utf8(a).unwrap_or("<invalid utf-8>"),
-                     format_strokes(b));
+                     format_strokes(strokes),
+                     std::str::from_utf8(translation).unwrap_or("<invalid utf-8>"));
         }).unwrap();
 
-        find_strokes_internal(b"KPWHREUFLT", &mut container, |a, b| {
+        find_strokes_internal(b"KPWHREUFLT", &mut container, |strokes, translation| {
             println!("got result: {}, {}",
-                     std::str::from_utf8(a).unwrap_or("<invalid utf-8>"),
-                     format_strokes(b));
+                     format_strokes(strokes),
+                     std::str::from_utf8(translation).unwrap_or("<invalid utf-8>"));
         }).unwrap();
     }
 }
