@@ -4,6 +4,9 @@
 
 #![cfg_attr(all(not(test), target_family = "wasm"), no_std)]
 
+// TODO temporary!!
+#![allow(dead_code)]
+
 use core::mem::size_of;
 use core::fmt::Write;
 use core::convert::TryInto;
@@ -761,50 +764,41 @@ fn query_internal<F>(query: &[u8], container: &mut impl DataStructuresContainer,
     Ok(())
 }
 
-//            unsafe {
-//                //yield_result(string.as_ptr() as u32, string.len() as u32, strokes.as_ptr() as u32, (strokes_end - strokes_start) as u32);
-//                yield_result(string.as_ptr() as u32, string.len() as u32, strokes.as_ptr() as u32, (strokes_end - strokes_start) as u32);
-//            }
-//        }
-//    }
-//
-//    return Ok(());
-//}
-//
-//fn find_stroke_internal(mut query_stroke: u32, stroke_prefix_lookup: &[usize], stroke_subindices: &[StrokeIndexEntry], definitions: &[u8]) -> InternalResult<()> {
-//
-//    // currently, we're storing the strokes with the last stroke marker,
-//    // so we'll have to add that in
-//    query_stroke |= 1 << 23;
-//
-//    let first_byte = query_stroke & 0xFF;
-//    let last_two_bytes = query_stroke >> 8;
-//
-//    let subindex_start = stroke_prefix_lookup[first_byte as usize];
-//    let subindex_end = stroke_prefix_lookup[first_byte as usize + 1];
-//    let subindex = &stroke_subindices[subindex_start..subindex_end];
-//
-//    let result = subindex.binary_search_by_key(&(last_two_bytes as u16), stroke_index_sortkey);
-//
-//    if let Ok(index) = result {
-//        let entry = &subindex[index];
-//        // skip the header
-//        let definition_offset = entry.definition_offset + 2;
-//
-//        let string_start = definition_offset;
-//        let string_end = *(&definitions[string_start..].iter().position(|&byte| byte == 0).unwrap()) + string_start;
-//        let string = &definitions[string_start..string_end];
-//        let strokes_start = string_end + 1;
-//        let strokes_end = *(&definitions[strokes_start..].chunks_exact(3).position(|stroke| (stroke[2] >> 7) == 1).unwrap()) * 3 + 3 + strokes_start;
-//        let strokes = &definitions[strokes_start..strokes_end];
-//
-//        unsafe {
-//            yield_result(string.as_ptr() as u32, string.len() as u32, strokes.as_ptr() as u32, (strokes_end - strokes_start) as u32);
-//        }
-//    }
-//
-//    return Ok(());
-//}
+fn parse_strokes_query(query: &[u8], parsed_strokes_buffer: &mut [u8]) -> InternalResult<usize> {
+
+    let mut pos = 0;
+
+    for strokes_byte in ParseStrokesIterator::new(query) {
+        if pos >= parsed_strokes_buffer.len() {
+            return Err(error!(b"parse strokes error", b"strokes don't fit in provided buffer"));
+        }
+
+        parsed_strokes_buffer[pos] = strokes_byte;
+        pos += 1;
+    }
+
+    return Ok(pos);
+}
+
+fn find_strokes_internal<F>(query: &[u8], container: &mut impl DataStructuresContainer, mut yield_result: F) -> InternalResult<()>
+    where F: FnMut(&[u8], &[u8])
+{
+    let (strokes_table, strings_table) = get_hashtables_from_container(container)?;
+
+    // TODO: figure out the allocation story for temporary buffers
+    // limit query to 32 strokes
+    let mut parsed_query_buffer = [0u8; 32*3];
+    let parsed_len = parse_strokes_query(query, &mut parsed_query_buffer)?;
+    let parsed_query = &parsed_query_buffer[..parsed_len];
+
+    for strings_offset in strokes_table.get_values(parsed_query) {
+        println!("got strings offset: {}", strings_offset);
+        let translation = hashtable::Entry::new(strings_table.data, strings_offset as usize).key;
+        yield_result(translation, parsed_query);
+    }
+
+    return Ok(());
+}
 
 #[cfg(test)]
 mod tests {
@@ -867,8 +861,8 @@ mod tests {
 
     fn format_stroke(stroke: u32) -> String {
         STENO_ORDER.chars().enumerate()
-            .filter(|(i, val)| (stroke & (1 << i)) != 0)
-            .map(|(i, val)| val)
+            .filter(|(i, _val)| (stroke & (1 << i)) != 0)
+            .map(|(_i, val)| val)
             .collect()
     }
 
@@ -901,6 +895,12 @@ mod tests {
             println!("got result: {}, {}",
                      std::str::from_utf8(a).unwrap_or("<invalid utf-8>"),
                      format_strokes(b));
-        });
+        }).unwrap();
+
+        find_strokes_internal(b"KPWHREUFLT", &mut container, |a, b| {
+            println!("got result: {}, {}",
+                     std::str::from_utf8(a).unwrap_or("<invalid utf-8>"),
+                     format_strokes(b));
+        }).unwrap();
     }
 }
