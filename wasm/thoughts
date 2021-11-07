@@ -1,0 +1,60 @@
+similar to very tight hash table:
+
+make a hash table where the hash index kind of uniquely identifies the first bits of the key,
+so that we don't have to store them along with the entry.
+
+rough definition: two words with different prefixes must never be mapped to the same bin.
+i.e.: there is a bijective map between prefixes and hash buckets.
+
+this definition isn't very good since it means that the suffix plays no role in
+selecting the bin, which is bad for common prefixes.
+
+finer definition: two words with different prefixes must never be mapped to the same bin, *if*
+                  they also share the same suffix.
+
+(this definition works since we still have to store the suffix for each word in each bin.
+if two words get mapped to the same bin and they have different prefixes, but the suffixes
+are also different, this is enough to distinguish them.)
+
+in other words: for each suffix s, the map f_s from prefixes to hash buckets is bijective.
+where: f(prefix, suffix) = f_suffix(prefix) = bucket_index is the function that maps each
+word == prefix || suffix to its bucket.
+
+  proof <=
+    
+    for arbitrary words a, b with prefix(a) != prefix(b):
+      if suffix(a) == suffix(b):
+        => f_{suffix(a)} == f_{suffix(b)}
+				=> f_{suffix(a)}(prefix(a)) == f_{suffix(b)}(prefix(a)) != f_{suffix(b)}(prefix(b)) (by bijectivity of f_{suffix(b)})
+				=> a and b are mapped to different bins
+
+  proof =>
+
+    for arbitrary suffix s:
+      for arbitrary prefixes pa, pb with pa != pb:
+				let a := pa || s
+				let b := pb || s
+
+				a and b share the same suffix
+				=> are mapped to different bins
+						 different bins --v
+				=> f_s(a) == f(a, s) != f(b, s) == f_s(b)
+			=> f_s(a) != f_s(b) for all pa != pb
+			=> f_s is bijective
+
+construction: hash the suffix, compute the hash index, then xor with the prefix.
+formalized: f(p, s) = p xor hash(s) (where hash is already modulo'd so that it has the same bitlength as p)
+
+proof that it fulfills bijectivity:
+
+  for arbitrary s:
+		for arbitrary pa, pb with pa != pb:
+		  f(pa, s) == pa xor hash(s) == pa xor pb xor pb xor hash(s)
+			         == pa xor pb xor f(pb, s) != 0 xor f(pb, s) == f(pb, s)
+
+			(since pa != pb => pa xor pb != pb xor pb == 0)
+
+		=> f_s(pa) == f(pa, s) != f(pb, s) == f_s(pb) for all pa != pb
+		=> f_s is bijective
+
+

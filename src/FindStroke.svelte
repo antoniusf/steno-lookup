@@ -4,11 +4,11 @@
 <script>
     import StrokeDisplay from './StrokeDisplay.svelte';
     import ResultsTable from './ResultsTable.svelte';
-    import { textToStroke, strokeToText } from './util.js';
+    import { textToStroke, strokeToText, strokeListToPackedStrokes } from './util.js';
 
     export let dictionary;
 
-    let stroke = 0;
+    let strokes = [0];
     let current_text = "";
     let input_element;
 
@@ -28,16 +28,16 @@
 	}
 
 	current_text = new_value;
-	stroke = textToStroke(current_text.toUpperCase());
+	strokes = current_text.toUpperCase().split("/").map(textToStroke);
 	doQuery();
     }
 
     function onStrokeChanged(event) {
-	stroke = event.detail.stroke;
+	strokes[strokes.length - 1] = event.detail.stroke;
 
 	// update the text input
 	// TODO: diffing to preserve consonant clusters etc?
-	current_text = strokeToText(stroke);
+	current_text = strokes.map(strokeToText).join("/");
 	input_element.value = current_text;
 	doQuery();
     }
@@ -46,7 +46,7 @@
 	error_msg = undefined;
 	results = undefined;
 	try {
-	    results = dictionary.find_stroke(stroke);
+	    results = dictionary.find_strokes(strokeListToPackedStrokes(strokes));
 	}
 	catch (e) {
 	    results = undefined;
@@ -75,7 +75,9 @@
   }
 </style>
 
-<StrokeDisplay bind:stroke on:strokeChanged={onStrokeChanged}/>
+<!--pass through the entire strokes array (even if we'd only need the last entry)
+    just because i don't know if binding would work if we passed an element-->
+<StrokeDisplay bind:strokes on:strokeChanged={onStrokeChanged}/>
 
 <input type="text" aria-labelledby="mode-label" on:input={onInput} bind:this={input_element} />
 {#if results !== undefined}

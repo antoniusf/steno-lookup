@@ -1,3 +1,2 @@
-#!/bin/bash
-wasm-strip target/wasm32-unknown-unknown/release/wasm.wasm
-cp target/wasm32-unknown-unknown/release/wasm.wasm ../public/helpers.wasm
+wasm-strip target/wasm32-unknown-unknown/release/wasm_module.wasm
+cp target/wasm32-unknown-unknown/release/wasm_module.wasm ../public/helpers.wasm

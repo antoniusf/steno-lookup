@@ -156,14 +156,21 @@ function prepare_instance_for_querying(instance_info, dictionary_data) {
 	return results.slice();
     }
 
-    function find_stroke(stroke) {
+    function find_strokes(strokes) {
+
+	const start = performance.now();
+
+	// limit length to 100 bytes, since that's how much is reserved
+	const query = strokes.subarray(0, 100);
+
+	let wasm_query = new Uint8Array(instance.exports.memory.buffer, query_start, query.length);
+	wasm_query.set(query);
 
 	// clear results in place
 	// this is necessary since it is captured by the yield_results function, so we can't reassign
 	results.splice(0, results.length);
-	const start = performance.now();
 	try {
-	    instance.exports.query(stroke, 0,
+	    instance.exports.query(query_start, query.length,
 				data_start,
 				1);
 	}
@@ -182,7 +189,7 @@ function prepare_instance_for_querying(instance_info, dictionary_data) {
     }
 
     // return wasm_data as well, so that the caller can store it if they want
-    return { lookup: lookup, find_stroke: find_stroke, data: wasm_data };
+    return { lookup: lookup, find_strokes: find_strokes, data: wasm_data };
 }
 
 export async function loadJson (json) {
@@ -225,8 +232,11 @@ export async function loadJson (json) {
     console.log(`after wasm (took ${performance.now() - start}ms)`);
 
     // this matches the Header struct in lib.rs
-    const lengths = new Uint32Array(wasm.exports.memory.buffer, info_ptr, 5);
-    const data_length = lengths[4];
+    const header = new Uint32Array(wasm.exports.memory.buffer, info_ptr, 3);
+    const usize_buffer_length = header[1];
+    const u8_buffer_length = header[2];
+    const header_size = 3 * 4; // 3 four-byte values
+    const data_length = header_size + usize_buffer_length*4 + u8_buffer_length;
 
     console.log(`data length: ${data_length}`);
 
