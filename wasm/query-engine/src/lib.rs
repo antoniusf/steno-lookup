@@ -857,13 +857,14 @@ mod tests {
 
         println!("hashtable constructed!");
 
-        query_internal(b"implicitly", &mut container, |strokes, translation| {
+        query_internal(b"implicit", &mut container, |strokes, translation| {
             println!("got result: {}, {}",
                      format_strokes(strokes),
                      std::str::from_utf8(translation).unwrap_or("<invalid utf-8>"));
         }).unwrap();
 
-        find_strokes_internal(b"KPWHREUFLT", &mut container, |strokes, translation| {
+        let parsed_strokes: Vec<u8> = ParseStrokesIterator::new(b"KPWHREUFLT").collect();
+        find_strokes_internal(&parsed_strokes, &mut container, |strokes, translation| {
             println!("got result: {}, {}",
                      format_strokes(strokes),
                      std::str::from_utf8(translation).unwrap_or("<invalid utf-8>"));
