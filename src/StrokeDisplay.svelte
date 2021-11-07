@@ -15,10 +15,10 @@
 	state[key] = false;
     }
 
-    export let stroke = 0;
+    export let strokes = [0];
 
     const dispatch = createEventDispatcher();
-    $: state = strokeToKeydict(stroke);
+    $: state = strokeToKeydict(strokes[strokes.length - 1]);
 
     function stroke_changed() {
 	dispatch('strokeChanged', {

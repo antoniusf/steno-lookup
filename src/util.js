@@ -137,6 +137,17 @@ export function textToStroke(text) {
     return stroke;
 }
 
+export function strokeListToPackedStrokes(stroke_list) {
+    let strokes = [];
+    for (const stroke of stroke_list) {
+        strokes.push(stroke & 0xFF);
+        strokes.push((stroke >> 8) & 0xFF);
+        strokes.push((stroke >> 16) & 0xFF);
+    }
+
+    return new Uint8Array(strokes);
+}
+
 export function strokeToKeylist (stroke) {
     let keylist = [];
     for (const key of steno_keys) {

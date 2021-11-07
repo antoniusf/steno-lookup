@@ -748,36 +748,14 @@ pub fn query_internal<F>(query: &[u8], container: &mut impl DataStructuresContai
     Ok(())
 }
 
-fn parse_strokes_query(query: &[u8], parsed_strokes_buffer: &mut [u8]) -> InternalResult<usize> {
-
-    let mut pos = 0;
-
-    for strokes_byte in ParseStrokesIterator::new(query) {
-        if pos >= parsed_strokes_buffer.len() {
-            return Err(error!(b"parse strokes error", b"strokes don't fit in provided buffer"));
-        }
-
-        parsed_strokes_buffer[pos] = strokes_byte;
-        pos += 1;
-    }
-
-    return Ok(pos);
-}
-
 pub fn find_strokes_internal<F>(query: &[u8], container: &mut impl DataStructuresContainer, mut yield_result: F) -> InternalResult<()>
     where F: FnMut(&[u8], &[u8])
 {
     let (strokes_table, strings_table) = get_hashtables_from_container(container)?;
 
-    // TODO: figure out the allocation story for temporary buffers
-    // limit query to 32 strokes
-    let mut parsed_query_buffer = [0u8; 32*3];
-    let parsed_len = parse_strokes_query(query, &mut parsed_query_buffer)?;
-    let parsed_query = &parsed_query_buffer[..parsed_len];
-
-    for strings_offset in strokes_table.get_values(parsed_query) {
+    for strings_offset in strokes_table.get_values(query) {
         let translation = hashtable::Entry::new(strings_table.data, strings_offset as usize).key;
-        yield_result(parsed_query, translation);
+        yield_result(query, translation);
     }
 
     return Ok(());
