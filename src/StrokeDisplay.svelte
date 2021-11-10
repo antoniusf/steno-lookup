@@ -394,7 +394,7 @@
         margin: 0.5em 0.8em 10%;
     }
 
-    button.steno-actions {
+    button.steno-action {
         width: fit-content;
         height: fit-content;
         padding: 0.2em 0.4em;
@@ -407,6 +407,12 @@
         justify-self: center;
         position: relative;
         top: 30%;
+    }
+
+    button.steno-action:focus {
+        outline: 2px solid #e50078;
+        outline-offset: 2px;
+        z-index: 10; /* make sure the focus ring is visible */
     }
 
     button#delete-stroke {
@@ -585,9 +591,11 @@
 
 <div id="steno-keyboard-hint-container" hidden={!show_keyboard_help}>
 
+    <p class="steno-keyboard-hint">The virtual stenotype always shows the last stroke of the search box. Use "add" to add a new, empty stroke, and "delete" to remove the current stroke and go back to the previous one.</p>
     <p class="steno-keyboard-hint"><b>Mouse:</b> Click keys to toggle them.</p>
     <p class="steno-keyboard-hint"><b>Touch:</b> Touch or swipe over keys to toggle them.</p>
-    <p class="steno-keyboard-hint"><b>Keyboard</b>: Use the arrow keys to move focus in between buttons on the virtual stenotype, and space or return to toggle. To move focus back out of the stenotype, just use tab or shift-tab once. <em>Experimental:</em> You may use a qwerty keyboard as direct input to the stenotype (while one of its keys is focused). Your left hand's homerow is between Q–R and A–F; your right hand's is between U–P and J–semicolon. Your left thumb sits on C and V, and your right thumb on N and M. Pressing a key will add the corresponding letter to the chord, but will never remove it; to clear the chord, use backspace.</p>
+    <p class="steno-keyboard-hint"><b>Keyboard:</b> Use arrow keys to move between buttons, and space or return to toggle.</p>
+    <p class="steno-keyboard-hint"><b>Keyboard (direct input):</b> Move focus to any button, then use a your keyboard as a qwerty stenotype. Pressing a key will add it to the chord; to clear the entire chord, use backspace.</p>
 
 </div>
 
@@ -630,7 +638,7 @@
                 on:focus={steno_key_focus}
             tabindex={(steno_keyboard_layout[steno_keyboard_position[0]][steno_keyboard_position[1]] == "pr")? 0 : -1}
             bind:this={steno_keyboard_buttons["pr"]}
-            class="steno-actions">
+            class="steno-action">
         delete</button>
     <button id="new-stroke"
                 on:click={(event) => {
@@ -646,6 +654,6 @@
                 on:focus={steno_key_focus}
             tabindex={(steno_keyboard_layout[steno_keyboard_position[0]][steno_keyboard_position[1]] == "ne")? 0 : -1}
             bind:this={steno_keyboard_buttons["ne"]}
-            class="steno-actions">
+            class="steno-action">
         add</button>
 </div>

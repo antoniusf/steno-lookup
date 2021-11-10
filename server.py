@@ -171,5 +171,5 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             
 server = HTTPServer(("0.0.0.0", 5001), Handler)
-server.socket = ssl.wrap_socket(server.socket, keyfile="/home/antonius/testing-server.key", certfile="/home/antonius/testing-server.crt", server_side=True)
+server.socket = ssl.wrap_socket(server.socket, keyfile="/home/antonius/minica/portland-3/key.pem", certfile="/home/antonius/minica/portland-3/cert.pem", server_side=True)
 server.serve_forever()
