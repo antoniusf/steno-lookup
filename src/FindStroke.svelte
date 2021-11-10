@@ -32,14 +32,12 @@
 	doQuery();
     }
 
-    function onStrokeChanged(event) {
-	strokes[strokes.length - 1] = event.detail.stroke;
-
-	// update the text input
-	// TODO: diffing to preserve consonant clusters etc?
-	current_text = strokes.map(strokeToText).join("/");
-	input_element.value = current_text;
-	doQuery();
+    $: {
+        current_text = strokes.map(strokeToText).join("/");
+        if (input_element && input_element.value != current_text) {
+            input_element.value = current_text;
+        }
+        doQuery();
     }
 
     async function doQuery() {
@@ -77,7 +75,7 @@
 
 <!--pass through the entire strokes array (even if we'd only need the last entry)
     just because i don't know if binding would work if we passed an element-->
-<StrokeDisplay bind:strokes on:strokeChanged={onStrokeChanged}/>
+<StrokeDisplay bind:strokes/>
 
 <input type="text" aria-labelledby="mode-label" on:input={onInput} bind:this={input_element} />
 {#if results !== undefined}

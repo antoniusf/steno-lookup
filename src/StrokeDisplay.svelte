@@ -6,8 +6,8 @@
     import { createEventDispatcher } from 'svelte';
 
     const keys = ["#", "S-", "T-", "K-", "P-", "W-", "H-", "R-", "A", "O", "*", "E", "U", "-F", "-R", "-P", "-B", "-L", "-G", "-T", "-S", "-D", "-Z"];
-    const replace_map = {"number": "#", "star": "*"};
-    const reverse_replace_map = {"#": "number", "*": "star"};
+    const replace_map = {"number": "#", "star": "*", "new-stroke": "ne", "delete-stroke": "pr"};
+    const reverse_replace_map = {"#": "number", "*": "star", "pr": "delete-stroke", "ne": "new-stroke"};
 
     const steno_keyboard_aria_labels = {
         "#": "number bar",
@@ -39,7 +39,7 @@
         ["#",  "#",  "#",  "#",  "#", "#",  "#",  "#",  "#",  "#"],
         ["S-", "T-", "P-", "H-", "*", "-F", "-P", "-L", "-T", "-D"],
         ["S-", "K-", "W-", "R-", "*", "-R", "-B", "-G", "-S", "-Z"],
-        [null, null, "A",  "O", null, "E",  "U",  null, null, null]
+        ["pr", "pr", "A",  "O", null, "E",  "U",  null, "ne", "ne"]
     ];
 
     // map each key to its (row, column) index
@@ -108,17 +108,17 @@
 
     export let strokes = [0];
 
-    const dispatch = createEventDispatcher();
     $: state = strokeToKeydict(strokes[strokes.length - 1]);
 
     function stroke_changed() {
-        dispatch('strokeChanged', {
-            stroke: keylistToStroke(
-                Object.entries(state)
-                .filter(([key, state]) => state) // use only keys where state is true
-                .map(([key, state]) => key)
-            )
-        });
+        console.log(state);
+        const last_stroke = keylistToStroke(
+            Object.entries(state)
+            .filter(([key, state]) => state) // use only keys where state is true
+            .map(([key, state]) => key)
+        );
+
+        strokes[strokes.length - 1] = last_stroke;
     }
 
     // touch handling
@@ -275,6 +275,7 @@
                 for (const key of keys) {
                     state[key] = 0;
                 }
+                stroke_changed();
                 break;
 
             default:
@@ -283,7 +284,7 @@
                     // set the new key.
                     steno_keyboard_physical_state[mapping] = 1;
                     state[mapping] = 1;
-                    stroke_changed()
+                    stroke_changed();
                 }
         }
     }
@@ -299,41 +300,37 @@
     function steno_key_focus(event) {
         let button_name = replace_map[event.target.id] || event.target.id;
         steno_keyboard_position = steno_keyboard_key_indices[button_name];
-        console.log(`changed focus to ${steno_keyboard_position}`);
+        console.log(`changed focus to ${steno_keyboard_position} (button name ${button_name})`);
     }
 
     function try_move_focus(delta) {
 
-        let new_position = [
-            steno_keyboard_position[0] + delta[0],
-            steno_keyboard_position[1] + delta[1]
-        ];
+        const current_key_name = steno_keyboard_layout[steno_keyboard_position[0]][steno_keyboard_position[1]];
+        let new_position = steno_keyboard_position.slice();
+        let key_name = current_key_name;
 
-        if (new_position[0] >= 0 && new_position[0] < steno_keyboard_layout.length) {
+        while (!key_name || key_name == current_key_name) {
+            // move until the key changes, or we hit another valid key
+            // this is for skipping the gap between the vowels,
+            // as well as for the long keys
 
-            let current_key_name = steno_keyboard_layout[steno_keyboard_position[0]][steno_keyboard_position[1]];
-            let key_name = steno_keyboard_layout[new_position[0]][new_position[1]];
+            new_position = [
+                new_position[0] + delta[0],
+                new_position[1] + delta[1]
+            ];
 
-            if (!key_name || key_name == current_key_name) {
-                // try to move another square
-                // this is for skipping the gap between the vowels,
-                // as well as for the long keys
-                console.log("double move");
-                new_position = [
-                    new_position[0] + delta[0],
-                    new_position[1] + delta[1]
-                ];
-
-                if (new_position[0] >= 0 && new_position[0] < steno_keyboard_layout.length) {
-                    key_name = steno_keyboard_layout[new_position[0]][new_position[1]];
-                }
+            if (new_position[0] < 0 || new_position[0] >= steno_keyboard_layout.length
+                || new_position[1] < 0 || new_position[1] >= steno_keyboard_layout[0].length) {
+                // no changes made
+                return;
             }
-            if (key_name && key_name != current_key_name) {
-                steno_keyboard_buttons[key_name].focus();
-                steno_keyboard_position = new_position;
-                console.log(steno_keyboard_position);
-            }
+
+            key_name = steno_keyboard_layout[new_position[0]][new_position[1]];
         }
+
+        steno_keyboard_buttons[key_name].focus();
+        steno_keyboard_position = new_position;
+        console.log(steno_keyboard_position);
     }
 </script>
 
@@ -389,12 +386,35 @@
             "number number number number number number number number number number"
         "S- T- P- H- star -F -P -L -T -D"
         "S- K- W- R- star -R -B -G -S -Z"
-        ".  .  A- O-   .  -E -U  .  .  .";
+        "pr pr A- O-   .  -E -U  . ne ne";
         grid-column-gap: 1.0%;
         grid-row-gap: 2.0%;
         max-width: 70em;
         width: calc(100% - 1.6em);
         margin: 0.5em 0.8em 10%;
+    }
+
+    button.steno-actions {
+        width: fit-content;
+        height: fit-content;
+        padding: 0.2em 0.4em;
+        margin: 0;
+        background-color: #aaa;
+        border: none;
+        color: black;
+        cursor: pointer;
+        align-self: center;
+        justify-self: center;
+        position: relative;
+        top: 30%;
+    }
+
+    button#delete-stroke {
+        grid-area: pr;
+    }
+
+    button#new-stroke {
+        grid-area: ne;
     }
 
     button.steno {
@@ -595,4 +615,37 @@
                 class="steno">
         </button>
     {/each}
+    <button id="delete-stroke"
+                on:click={(event) => {
+                    strokes.pop();
+                    if (strokes.length == 0) {
+                        strokes.push(0);
+                    }
+                    state = strokeToKeydict(strokes[strokes.length - 1]);
+                    strokes = strokes; // make sure update gets reacted on internally
+                    stroke_changed(); // emit change event
+                }}
+                on:keydown={steno_key_keydown}
+                on:keyup={steno_key_keyup}
+                on:focus={steno_key_focus}
+            tabindex={(steno_keyboard_layout[steno_keyboard_position[0]][steno_keyboard_position[1]] == "pr")? 0 : -1}
+            bind:this={steno_keyboard_buttons["pr"]}
+            class="steno-actions">
+        delete</button>
+    <button id="new-stroke"
+                on:click={(event) => {
+                    if (strokes[strokes.length - 1] != 0) {
+                        strokes.push(0);
+                        state = strokeToKeydict(strokes[strokes.length - 1]);
+                        strokes = strokes; // make sure update gets reacted on internally
+                        stroke_changed(); // emit change event
+                    }
+                }}
+                on:keydown={steno_key_keydown}
+                on:keyup={steno_key_keyup}
+                on:focus={steno_key_focus}
+            tabindex={(steno_keyboard_layout[steno_keyboard_position[0]][steno_keyboard_position[1]] == "ne")? 0 : -1}
+            bind:this={steno_keyboard_buttons["ne"]}
+            class="steno-actions">
+        add</button>
 </div>
