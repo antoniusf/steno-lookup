@@ -26,24 +26,24 @@ you'll need [node](https://nodejs.org) for the main app, and [rust](https://www.
 
 the main app is based on the project template for [svelte](https://svelte.dev) apps from https://github.com/sveltejs/template. i've included the relevant section from their readme below.
 
-### Get started
-
-Install the dependencies...
-
-```bash
-cd svelte-app
-npm install
-```
-
-...then start [Rollup](https://rollupjs.org):
-
-```bash
-npm run dev
-```
-
-Navigate to [localhost:5000](http://localhost:5000). You should see your app running. Edit a component file in `src`, save it, and reload the page to see your changes.
-
-By default, the server will only respond to requests from localhost. To allow connections from other computers, edit the `sirv` commands in package.json to include the option `--host 0.0.0.0`.
+> ### Get started
+> 
+> Install the dependencies...
+> 
+> ```bash
+> cd svelte-app
+> npm install
+> ```
+> 
+> ...then start [Rollup](https://rollupjs.org):
+> 
+> ```bash
+> npm run dev
+> ```
+> 
+> Navigate to [localhost:5000](http://localhost:5000). You should see your app running. Edit a component file in `src`, save it, and reload the page to see your changes.
+> 
+> By default, the server will only respond to requests from localhost. To allow connections from other computers, edit the `sirv` commands in package.json to include the option `--host 0.0.0.0`.
 
 ### testing the release service worker
 
